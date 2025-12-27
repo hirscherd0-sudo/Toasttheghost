@@ -27,7 +27,9 @@ io.on('connection', (socket) => {
                 hostId: socket.id,
                 level: 1,
                 score: 0,
-                isTransitioning: false // NEU: Sperre für Levelwechsel
+                isTransitioning: false,
+                powerModeActive: false, // Server-Status
+                powerModeTimer: null
             };
         }
 
@@ -39,15 +41,18 @@ io.on('connection', (socket) => {
             isDead: false
         };
 
-        socket.emit('currentRoomState', rooms[room]);
+        socket.emit('currentRoomState', {
+            ...rooms[room],
+            // Timer Objekt nicht senden, ist server-intern
+            powerModeTimer: undefined 
+        });
         socket.to(room).emit('playerJoined', rooms[room].players[socket.id]);
     });
 
     socket.on('playerMove', ({ room, x, z, rotation }) => {
         if (rooms[room] && rooms[room].players[socket.id]) {
-            rooms[room].players[socket.id].x = x;
-            rooms[room].players[socket.id].z = z;
-            rooms[room].players[socket.id].rotation = rotation;
+            const p = rooms[room].players[socket.id];
+            p.x = x; p.z = z; p.rotation = rotation;
             socket.to(room).emit('playerMoved', { id: socket.id, x, z, rotation });
         }
     });
@@ -60,9 +65,10 @@ io.on('connection', (socket) => {
     });
 
     socket.on('itemCollected', ({ room, type, index }) => {
-        if (!rooms[room] || rooms[room].isTransitioning) return; // Keine Items während Wechsel sammeln
+        if (!rooms[room] || rooms[room].isTransitioning) return;
         
         let updateNeeded = false;
+        
         if (type === 'pellet') {
             if (!rooms[room].pelletsRemoved.includes(index)) {
                 rooms[room].pelletsRemoved.push(index);
@@ -74,7 +80,24 @@ io.on('connection', (socket) => {
                 rooms[room].crucifixesRemoved.push(index);
                 rooms[room].score += 50;
                 updateNeeded = true;
-                io.to(room).emit('powerModeActivated');
+                
+                // --- SERVER POWER MODE LOGIC ---
+                rooms[room].powerModeActive = true;
+                
+                // Alten Timer löschen falls vorhanden (Verlängerung)
+                if (rooms[room].powerModeTimer) clearTimeout(rooms[room].powerModeTimer);
+                
+                // An alle senden: AN
+                io.to(room).emit('powerModeChanged', { active: true });
+                
+                // Nach 8 Sekunden ausschalten
+                rooms[room].powerModeTimer = setTimeout(() => {
+                    if(rooms[room]) {
+                        rooms[room].powerModeActive = false;
+                        rooms[room].powerModeTimer = null;
+                        io.to(room).emit('powerModeChanged', { active: false });
+                    }
+                }, 8000);
             }
         }
 
@@ -84,7 +107,8 @@ io.on('connection', (socket) => {
     });
 
     socket.on('ghostEliminated', ({ room, ghostId }) => {
-         if(rooms[room] && !rooms[room].isTransitioning) {
+         // Server Check: Darf Geist getötet werden?
+         if(rooms[room] && !rooms[room].isTransitioning && rooms[room].powerModeActive) {
              rooms[room].score += 500;
              io.to(room).emit('ghostDied', { ghostId, newScore: rooms[room].score });
          }
@@ -92,6 +116,14 @@ io.on('connection', (socket) => {
 
     socket.on('playerKilled', ({ room, playerId }) => {
         if (rooms[room] && rooms[room].players[playerId] && !rooms[room].isTransitioning) {
+            
+            // Server Check: Ist Power Mode an? Falls ja, ignorieren wir den Kill-Versuch!
+            // Das schützt Spieler, wenn der Host laggt.
+            if(rooms[room].powerModeActive) {
+                console.log("Player kill blocked due to PowerMode");
+                return; 
+            }
+
             if(!rooms[room].players[playerId].isDead) {
                 rooms[room].players[playerId].isDead = true;
                 io.to(room).emit('playerDied', { playerId });
@@ -99,38 +131,31 @@ io.on('connection', (socket) => {
                 const allDead = Object.values(rooms[room].players).every(p => p.isDead);
                 if (allDead) {
                     io.to(room).emit('gameOver', { finalScore: rooms[room].score });
-                    // Soft Reset
                     rooms[room].isTransitioning = false; 
                     rooms[room].level = 1;
                     rooms[room].score = 0;
                     rooms[room].pelletsRemoved = [];
                     rooms[room].crucifixesRemoved = [];
+                    rooms[room].powerModeActive = false;
                     for(let pid in rooms[room].players) rooms[room].players[pid].isDead = false;
                 }
             }
         }
     });
     
-    // --- NEU: Sicherer Levelwechsel ---
     socket.on('levelFinished', ({ room }) => {
         if(rooms[room] && !rooms[room].isTransitioning) {
-            console.log(`Room ${room} finished Level ${rooms[room].level}`);
-            rooms[room].isTransitioning = true; // Sperre aktivieren
-            
-            // Level erhöhen
+            rooms[room].isTransitioning = true;
             rooms[room].level++;
             rooms[room].pelletsRemoved = [];
             rooms[room].crucifixesRemoved = [];
-            
-            // Alle heilen
-            for(let pid in rooms[room].players) {
-                rooms[room].players[pid].isDead = false;
-            }
+            rooms[room].powerModeActive = false; // Reset Power Mode
+            if(rooms[room].powerModeTimer) clearTimeout(rooms[room].powerModeTimer);
 
-            // Signal an alle senden
+            for(let pid in rooms[room].players) rooms[room].players[pid].isDead = false;
+
             io.to(room).emit('startNextLevel', { level: rooms[room].level });
 
-            // Sperre nach kurzer Zeit aufheben (damit Clients laden können)
             setTimeout(() => {
                 if(rooms[room]) rooms[room].isTransitioning = false;
             }, 2000);
