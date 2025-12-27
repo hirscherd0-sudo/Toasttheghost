@@ -26,7 +26,8 @@ io.on('connection', (socket) => {
                 crucifixesRemoved: [],
                 hostId: socket.id,
                 level: 1,
-                score: 0
+                score: 0,
+                isTransitioning: false // NEU: Sperre für Levelwechsel
             };
         }
 
@@ -59,7 +60,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('itemCollected', ({ room, type, index }) => {
-        if (!rooms[room]) return;
+        if (!rooms[room] || rooms[room].isTransitioning) return; // Keine Items während Wechsel sammeln
         
         let updateNeeded = false;
         if (type === 'pellet') {
@@ -73,7 +74,7 @@ io.on('connection', (socket) => {
                 rooms[room].crucifixesRemoved.push(index);
                 rooms[room].score += 50;
                 updateNeeded = true;
-                io.to(room).emit('powerModeActivated'); // WICHTIG: Signal an alle!
+                io.to(room).emit('powerModeActivated');
             }
         }
 
@@ -83,25 +84,25 @@ io.on('connection', (socket) => {
     });
 
     socket.on('ghostEliminated', ({ room, ghostId }) => {
-         if(rooms[room]) {
+         if(rooms[room] && !rooms[room].isTransitioning) {
              rooms[room].score += 500;
              io.to(room).emit('ghostDied', { ghostId, newScore: rooms[room].score });
          }
     });
 
     socket.on('playerKilled', ({ room, playerId }) => {
-        if (rooms[room] && rooms[room].players[playerId]) {
+        if (rooms[room] && rooms[room].players[playerId] && !rooms[room].isTransitioning) {
             if(!rooms[room].players[playerId].isDead) {
                 rooms[room].players[playerId].isDead = true;
                 io.to(room).emit('playerDied', { playerId });
 
-                // Check Game Over
                 const allDead = Object.values(rooms[room].players).every(p => p.isDead);
                 if (allDead) {
                     io.to(room).emit('gameOver', { finalScore: rooms[room].score });
-                    // Score Reset nach Game Over
-                    rooms[room].score = 0;
+                    // Soft Reset
+                    rooms[room].isTransitioning = false; 
                     rooms[room].level = 1;
+                    rooms[room].score = 0;
                     rooms[room].pelletsRemoved = [];
                     rooms[room].crucifixesRemoved = [];
                     for(let pid in rooms[room].players) rooms[room].players[pid].isDead = false;
@@ -110,20 +111,29 @@ io.on('connection', (socket) => {
         }
     });
     
+    // --- NEU: Sicherer Levelwechsel ---
     socket.on('levelFinished', ({ room }) => {
-        if(rooms[room]) {
-            // Level hochzählen
+        if(rooms[room] && !rooms[room].isTransitioning) {
+            console.log(`Room ${room} finished Level ${rooms[room].level}`);
+            rooms[room].isTransitioning = true; // Sperre aktivieren
+            
+            // Level erhöhen
             rooms[room].level++;
-            // Items zurücksetzen für neue Map
             rooms[room].pelletsRemoved = [];
             rooms[room].crucifixesRemoved = [];
             
-            // Spieler heilen
+            // Alle heilen
             for(let pid in rooms[room].players) {
                 rooms[room].players[pid].isDead = false;
             }
 
+            // Signal an alle senden
             io.to(room).emit('startNextLevel', { level: rooms[room].level });
+
+            // Sperre nach kurzer Zeit aufheben (damit Clients laden können)
+            setTimeout(() => {
+                if(rooms[room]) rooms[room].isTransitioning = false;
+            }, 2000);
         }
     });
 
@@ -132,8 +142,6 @@ io.on('connection', (socket) => {
             if (rooms[roomId].players[socket.id]) {
                 delete rooms[roomId].players[socket.id];
                 io.to(roomId).emit('playerLeft', socket.id);
-                
-                // Host Migration
                 if (rooms[roomId].hostId === socket.id) {
                     const remainingIds = Object.keys(rooms[roomId].players);
                     if (remainingIds.length > 0) {
