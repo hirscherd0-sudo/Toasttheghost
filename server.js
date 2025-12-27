@@ -95,7 +95,11 @@ io.on('connection', (socket) => {
                 const allDead = Object.values(rooms[room].players).every(p => p.isDead);
                 if (allDead) {
                     io.to(room).emit('gameOver', { finalScore: rooms[room].score });
-                    // Reset Room für Neustart könnte hier folgen, oder Reload durch Client
+                    // Score Reset bei Game Over?
+                    rooms[room].score = 0;
+                    rooms[room].level = 1;
+                    // Reset Spieler
+                    for(let pid in rooms[room].players) rooms[room].players[pid].isDead = false;
                 }
             }
         }
