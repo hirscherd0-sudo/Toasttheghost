@@ -8,7 +8,6 @@
         body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Courier New', Courier, monospace; user-select: none; }
         #game-container { position: relative; width: 100vw; height: 100vh; display: none; } 
         
-        /* --- LOBBY --- */
         #lobby-container {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: #111; display: flex; flex-direction: column;
@@ -36,7 +35,6 @@
         }
         .char-select.selected { border-color: #ffcc00; background: #444; box-shadow: 0 0 10px #ffcc00; }
 
-        /* --- HUD --- */
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
         #stats-container { position: absolute; top: 20px; left: 20px; }
         .stat-text { color: #ffcc00; font-size: 20px; text-shadow: 2px 2px 0 #000; font-weight: bold; margin-bottom: 5px; }
@@ -53,7 +51,6 @@
             padding: 20px; border: 2px solid #00ffff; border-radius: 10px; z-index: 20;
         }
 
-        /* --- SCREENS --- */
         #death-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(50, 0, 0, 0.4);
@@ -62,7 +59,7 @@
         }
         .death-text {
             font-size: 40px; color: red; text-shadow: 2px 2px 0 #000; font-weight: bold;
-            background: rgba(0,0,0,0.8); padding: 20px; border: 2px solid red; text-align: center;
+            background: rgba(0,0,0,0.8); padding: 20px; border: 2px solid red;
         }
 
         #game-over-screen {
@@ -71,7 +68,6 @@
             justify-content: center; align-items: center; flex-direction: column; pointer-events: auto;
         }
 
-        /* --- JOYSTICK (Verschoben nach oben) --- */
         #joystick-zone {
             position: absolute; bottom: 80px; left: 40px; width: 120px; height: 120px;
             background: rgba(255, 255, 255, 0.15); border-radius: 50%;
@@ -241,10 +237,7 @@ socket.on('ghostDied', ({ ghostId, newScore }) => {
 socket.on('playerDied', ({ playerId }) => {
     if (playerId === socket.id) {
         amIDead = true;
-        // Wir lassen das Mesh sichtbar für andere, aber entfernen es für mich (Kamera bleibt)
-        // Oder wir machen es halb-transparent?
-        // Simpel: Mesh weg für mich, Death Screen an.
-        if(player) player.visible = false; 
+        player.visible = false; 
         document.getElementById('death-screen').style.display = 'flex';
         document.getElementById('joystick-zone').style.display = 'none';
     } else {
@@ -264,6 +257,7 @@ socket.on('gameOver', ({ finalScore }) => {
 
 socket.on('startNextLevel', ({ level }) => {
     currentState.level = level;
+    // Reset States
     amIDead = false;
     isPowerMode = false;
     levelEnding = false;
@@ -560,9 +554,7 @@ function activatePowerModeVisuals(active) {
 }
 
 function updateGameLogic() {
-    // HOST & CLIENT LOGIC MERGED (but ghost calc only host)
-    
-    // PLAYER CONTROLS (Unless Dead)
+    // 1. PLAYER MOVE (Local) - Only if alive
     if (!amIDead && joystickData.active) {
         const speed = CONFIG.moveSpeed;
         const tx = player.position.x + joystickData.x * speed;
@@ -575,13 +567,14 @@ function updateGameLogic() {
         socket.emit('playerMove', { room: myRoomId, x: player.position.x, z: player.position.z, rotation: player.rotation.y });
     }
 
-    // REMOTE PLAYERS
+    // 2. REMOTE PLAYERS INTERPOLATION
     for(const id in remotePlayers) {
         const rp = remotePlayers[id];
         if(rp.targetPos) {
             rp.mesh.position.x += (rp.targetPos.x - rp.mesh.position.x) * 0.3;
             rp.mesh.position.z += (rp.targetPos.z - rp.mesh.position.z) * 0.3;
             rp.mesh.rotation.y = rp.targetPos.rot;
+            
             const vec = rp.mesh.position.clone(); vec.y += 2.5; vec.project(camera);
             const x = (vec.x * .5 + .5) * window.innerWidth;
             const y = (-(vec.y * .5) + .5) * window.innerHeight;
@@ -591,32 +584,35 @@ function updateGameLogic() {
         }
     }
 
-    // ITEMS
-    pellets.forEach(p => {
-        if(p.visible && player.position.distanceTo(p.position) < 1.5) {
-            p.visible = false; socket.emit('itemCollected', { room: myRoomId, type: 'pellet', index: p.userData.index });
-        }
-    });
-    crucifixes.forEach(c => {
-         if(c.visible && player.position.distanceTo(c.position) < 2.0) {
-            c.visible = false; socket.emit('itemCollected', { room: myRoomId, type: 'crucifix', index: c.userData.index });
-        }
-    });
+    // 3. ITEM COLLISION (Local Check, Server Auth) - Only if alive
+    if (!amIDead) {
+        pellets.forEach(p => {
+            if(p.visible && player.position.distanceTo(p.position) < 1.5) {
+                p.visible = false; socket.emit('itemCollected', { room: myRoomId, type: 'pellet', index: p.userData.index });
+            }
+        });
+        crucifixes.forEach(c => {
+             if(c.visible && player.position.distanceTo(c.position) < 2.0) {
+                c.visible = false; socket.emit('itemCollected', { room: myRoomId, type: 'crucifix', index: c.userData.index });
+            }
+        });
+    }
 
-    // HOST LOGIC (GHOSTS)
+    // 4. HOST LOGIC (GHOSTS) - RUNS EVEN IF DEAD!
     if (isHost && ghosts.length > 0) {
         const ghostUpdates = [];
         ghosts.forEach((g, i) => {
             if(!g.visible) return;
             
-            // FIND TARGET (Any living player)
             let target = null;
             let minDist = 9999;
 
+            // Check ME (if alive)
             if (!amIDead) {
                 const d = g.position.distanceTo(player.position);
                 if (d < minDist) { minDist = d; target = player.position; }
             }
+            // Check REMOTES (if visible/alive)
             for(let id in remotePlayers) {
                 const rp = remotePlayers[id];
                 if (rp.mesh.visible) {
@@ -625,6 +621,7 @@ function updateGameLogic() {
                 }
             }
 
+            // Move Ghost
             if (target) {
                 const dir = new THREE.Vector3().subVectors(target, g.position).normalize();
                 const speed = CONFIG.baseGhostSpeed * 0.5; 
@@ -636,7 +633,7 @@ function updateGameLogic() {
 
             ghostUpdates.push({ x: g.position.x, z: g.position.z, index: i });
             
-            // COLLISIONS (Server will validate Power Mode)
+            // Check Collision ME
             if (!amIDead && g.position.distanceTo(player.position) < 1.5) {
                  if(isPowerMode) {
                      socket.emit('ghostEliminated', { room: myRoomId, ghostId: i });
@@ -645,6 +642,7 @@ function updateGameLogic() {
                  }
             }
             
+            // Check Collision REMOTE
             for(let id in remotePlayers) {
                 const rp = remotePlayers[id];
                 if (rp.mesh.visible && g.position.distanceTo(rp.mesh.position) < 1.5) {
@@ -659,6 +657,7 @@ function updateGameLogic() {
         socket.emit('ghostsUpdate', { room: myRoomId, ghostsData: ghostUpdates });
     }
     
+    // Level End Check
     if(isHost && !levelEnding) { 
         let itemsLeft = pellets.some(p => p.visible) || crucifixes.some(c => c.visible);
         if(!itemsLeft) {
@@ -667,6 +666,7 @@ function updateGameLogic() {
         }
     }
 
+    // Particles
     for(let i = particles.length -1; i>=0; i--) {
         const p = particles[i];
         p.position.add(new THREE.Vector3(p.userData.vx, p.userData.vy, p.userData.vz));
