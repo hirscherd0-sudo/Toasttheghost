@@ -1,157 +1,736 @@
-const express = require('express');
-const app = express();
-const http = require('http').createServer(app);
-const io = require('socket.io')(http);
-const path = require('path');
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Toast the Ghost - Multiplayer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Courier New', Courier, monospace; user-select: none; }
+        #game-container { position: relative; width: 100vw; height: 100vh; display: none; } 
+        
+        #lobby-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #111; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 100;
+            color: white; background-image: radial-gradient(circle at center, #333 0%, #000 100%);
+        }
+        .title-logo {
+            font-size: 40px; color: #ffcc00; text-shadow: 4px 4px 0px #a00, 0 0 30px #ffaa00;
+            font-weight: 900; letter-spacing: 3px; margin-bottom: 30px; text-align: center;
+        }
+        .lobby-input {
+            padding: 12px; font-size: 16px; margin: 8px; background: #222;
+            border: 2px solid #555; color: #fff; width: 220px; text-align: center; border-radius: 5px;
+        }
+        .lobby-btn {
+            padding: 15px 40px; font-size: 20px; background: #a00; color: white;
+            border: none; cursor: pointer; margin-top: 25px; border-radius: 8px;
+            font-weight: bold; box-shadow: 0 4px 0 #500;
+        }
+        
+        .char-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 15px; }
+        .char-select {
+            padding: 10px; border: 2px solid #444; cursor: pointer; text-align: center;
+            background: #1a1a1a; border-radius: 5px; font-size: 14px;
+        }
+        .char-select.selected { border-color: #ffcc00; background: #444; box-shadow: 0 0 10px #ffcc00; }
 
-app.use(express.static(path.join(__dirname, 'public')));
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+        #stats-container { position: absolute; top: 20px; left: 20px; }
+        .stat-text { color: #ffcc00; font-size: 20px; text-shadow: 2px 2px 0 #000; font-weight: bold; margin-bottom: 5px; }
+        
+        #minimap-container {
+            position: absolute; top: 20px; right: 20px; width: 180px; height: 140px;
+            border: 3px solid #888; background: #111;
+        }
+        
+        #status-message {
+            position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
+            color: #00ffff; font-size: 24px; font-weight: bold; text-shadow: 0 0 10px #0000ff;
+            display: none; text-align: center; background: rgba(0,0,0,0.8);
+            padding: 20px; border: 2px solid #00ffff; border-radius: 10px; z-index: 20;
+        }
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+        #death-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(50, 0, 0, 0.4);
+            display: none; justify-content: center; align-items: center; z-index: 15;
+            flex-direction: column; pointer-events: none;
+        }
+        .death-text {
+            font-size: 40px; color: red; text-shadow: 2px 2px 0 #000; font-weight: bold;
+            background: rgba(0,0,0,0.8); padding: 20px; border: 2px solid red;
+        }
+
+        #game-over-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.95); display: none; z-index: 50;
+            justify-content: center; align-items: center; flex-direction: column; pointer-events: auto;
+        }
+
+        #joystick-zone {
+            position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px;
+            background: rgba(255, 255, 255, 0.15); border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.4); pointer-events: auto; touch-action: none; z-index: 10;
+        }
+        #joystick-knob {
+            position: absolute; top: 50%; left: 50%; width: 50px; height: 50px;
+            background: rgba(255, 255, 255, 0.6); border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        .player-label {
+            position: absolute; color: white; background: rgba(0,0,0,0.6); padding: 2px 6px;
+            font-size: 11px; pointer-events: none; border-radius: 4px; display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="lobby-container">
+    <div class="title-logo">TOAST THE GHOST</div>
+    <input type="text" id="username-input" class="lobby-input" placeholder="Dein Name" maxlength="10">
+    <input type="text" id="room-input" class="lobby-input" placeholder="Raum Name" maxlength="10">
+
+    <div class="char-grid">
+        <div class="char-select selected" onclick="selectLobbyChar('ramona', this)">Ramona</div>
+        <div class="char-select" onclick="selectLobbyChar('pia', this)">Pia</div>
+        <div class="char-select" onclick="selectLobbyChar('sophie', this)">Sophie</div>
+        <div class="char-select" onclick="selectLobbyChar('johnny', this)">Johnny</div>
+        <div class="char-select" onclick="selectLobbyChar('sebi', this)">Sebi</div>
+    </div>
+
+    <button class="lobby-btn" onclick="joinGame()">STARTEN</button>
+</div>
+
+<div id="game-container">
+    <div id="ui-layer">
+        <div id="stats-container">
+            <div id="score-text" class="stat-text">SCORE: 0</div>
+            <div id="level-text" class="stat-text">LEVEL: 1</div>
+        </div>
+        <div id="minimap-container"></div>
+        <div id="status-message"></div>
+    </div>
+    
+    <div id="death-screen">
+        <div class="death-text">DU BIST RAUS!<br><span style="font-size: 20px; color: white;">Warte auf das nächste Level...</span></div>
+    </div>
+
+    <div id="game-over-screen">
+        <h1 style="color:red; font-size: 50px;">GAME OVER</h1>
+        <h2 style="color:white;" id="final-score-text"></h2>
+        <button class="lobby-btn" onclick="location.reload()">Neustart</button>
+    </div>
+
+    <div id="joystick-zone"><div id="joystick-knob"></div></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+const socket = io();
+let myRoomId = null;
+let selectedCharKey = 'ramona';
+let isHost = false; 
+let amIDead = false;
+let isPowerMode = false; // WICHTIG: Globaler Power Mode Status
+let powerModeTimeout = null;
+
+const remotePlayers = {}; 
+
+function selectLobbyChar(key, elem) {
+    selectedCharKey = key;
+    document.querySelectorAll('.char-select').forEach(el => el.classList.remove('selected'));
+    elem.classList.add('selected');
+}
+
+function joinGame() {
+    const username = document.getElementById('username-input').value.trim() || "Jäger";
+    const room = document.getElementById('room-input').value.trim() || "1";
+    myRoomId = room;
+
+    document.getElementById('lobby-container').style.display = 'none';
+    document.getElementById('game-container').style.display = 'block';
+
+    socket.emit('joinRoom', { room, character: selectedCharKey, username });
+    initGame();
+}
+
+// --- NETWORK ---
+socket.on('currentRoomState', (roomState) => {
+    for (const id in roomState.players) {
+        if (id !== socket.id) spawnRemotePlayer(id, roomState.players[id]);
+    }
+    roomState.pelletsRemoved.forEach(idx => {
+        const p = pellets.find(pel => pel.userData.index === idx);
+        if(p) { scene.remove(p); p.visible = false; }
+    });
+    roomState.crucifixesRemoved.forEach(idx => {
+        const c = crucifixes.find(cru => cru.userData.index === idx);
+        if(c) { scene.remove(c); c.visible = false; }
+    });
+    currentState.score = roomState.score;
+    updateScoreUI();
+    currentState.level = roomState.level;
+    document.getElementById('level-text').innerText = "LEVEL: " + currentState.level;
+
+    if (roomState.hostId === socket.id) isHost = true;
 });
 
-const rooms = {};
+socket.on('playerJoined', (pd) => spawnRemotePlayer(pd.id, pd));
+socket.on('playerMoved', (d) => {
+    if (remotePlayers[d.id]) remotePlayers[d.id].targetPos = { x: d.x, z: d.z, rot: d.rotation };
+});
+socket.on('playerLeft', (id) => {
+    if (remotePlayers[id]) {
+        scene.remove(remotePlayers[id].mesh);
+        if(remotePlayers[id].label) remotePlayers[id].label.remove();
+        delete remotePlayers[id];
+    }
+});
+socket.on('youAreHost', () => { isHost = true; });
 
-io.on('connection', (socket) => {
-    console.log('Verbindung:', socket.id);
-
-    socket.on('joinRoom', ({ room, character, username }) => {
-        socket.join(room);
-
-        if (!rooms[room]) {
-            rooms[room] = {
-                players: {},
-                ghosts: [],
-                pelletsRemoved: [],
-                crucifixesRemoved: [],
-                hostId: socket.id,
-                level: 1,
-                score: 0
-            };
-        }
-
-        rooms[room].players[socket.id] = {
-            id: socket.id,
-            x: 0, z: 0, rotation: 0,
-            character: character,
-            username: username,
-            isDead: false
-        };
-
-        socket.emit('currentRoomState', rooms[room]);
-        socket.to(room).emit('playerJoined', rooms[room].players[socket.id]);
-    });
-
-    socket.on('playerMove', ({ room, x, z, rotation }) => {
-        if (rooms[room] && rooms[room].players[socket.id]) {
-            rooms[room].players[socket.id].x = x;
-            rooms[room].players[socket.id].z = z;
-            rooms[room].players[socket.id].rotation = rotation;
-            socket.to(room).emit('playerMoved', { id: socket.id, x, z, rotation });
-        }
-    });
-
-    socket.on('ghostsUpdate', ({ room, ghostsData }) => {
-        if (rooms[room]) {
-            rooms[room].ghosts = ghostsData;
-            socket.to(room).emit('ghostsUpdated', ghostsData);
-        }
-    });
-
-    socket.on('itemCollected', ({ room, type, index }) => {
-        if (!rooms[room]) return;
-        
-        let updateNeeded = false;
-        if (type === 'pellet') {
-            if (!rooms[room].pelletsRemoved.includes(index)) {
-                rooms[room].pelletsRemoved.push(index);
-                rooms[room].score += 10;
-                updateNeeded = true;
-            }
-        } else if (type === 'crucifix') {
-             if (!rooms[room].crucifixesRemoved.includes(index)) {
-                rooms[room].crucifixesRemoved.push(index);
-                rooms[room].score += 50;
-                updateNeeded = true;
-                io.to(room).emit('powerModeActivated'); // WICHTIG: Signal an alle!
+socket.on('ghostsUpdated', (gData) => {
+    if (!isHost) {
+        for (let i = 0; i < gData.length; i++) {
+            if (ghosts[i]) {
+                ghosts[i].position.x = gData[i].x;
+                ghosts[i].position.z = gData[i].z;
             }
         }
+    }
+});
 
-        if(updateNeeded) {
-            io.to(room).emit('itemRemoved', { type, index, newScore: rooms[room].score });
+socket.on('itemRemoved', ({ type, index, newScore }) => {
+    currentState.score = newScore;
+    updateScoreUI();
+    if (type === 'pellet') {
+        const p = pellets.find(pel => pel.userData.index === index);
+        if(p) { scene.remove(p); p.visible = false; }
+    } else if (type === 'crucifix') {
+        const c = crucifixes.find(cru => cru.userData.index === index);
+        if(c) { scene.remove(c); c.visible = false; }
+    }
+});
+
+socket.on('powerModeActivated', () => {
+    isPowerMode = true; // Client Status aktualisieren!
+    activatePowerModeVisuals();
+});
+
+socket.on('ghostDied', ({ ghostId, newScore }) => {
+    currentState.score = newScore;
+    updateScoreUI();
+    if (ghosts[ghostId] && ghosts[ghostId].visible) {
+        spawnDeathParticles(ghosts[ghostId].position.x, ghosts[ghostId].position.z);
+        scene.remove(ghosts[ghostId]);
+        ghosts[ghostId].visible = false; 
+    }
+});
+
+socket.on('playerDied', ({ playerId }) => {
+    if (playerId === socket.id) {
+        amIDead = true;
+        player.visible = false; 
+        document.getElementById('death-screen').style.display = 'flex';
+        document.getElementById('joystick-zone').style.display = 'none';
+    } else {
+        if (remotePlayers[playerId]) {
+            remotePlayers[playerId].mesh.visible = false; 
+            if(remotePlayers[playerId].label) remotePlayers[playerId].label.style.color = "red";
+            if(remotePlayers[playerId].label) remotePlayers[playerId].label.innerText += " (TOT)";
+        }
+    }
+});
+
+socket.on('gameOver', ({ finalScore }) => {
+    document.getElementById('death-screen').style.display = 'none';
+    document.getElementById('final-score-text').innerText = "SCORE: " + finalScore;
+    document.getElementById('game-over-screen').style.display = 'flex';
+});
+
+socket.on('startNextLevel', ({ level }) => {
+    currentState.level = level;
+    amIDead = false;
+    isPowerMode = false;
+    document.getElementById('death-screen').style.display = 'none';
+    document.getElementById('joystick-zone').style.display = 'block';
+    if(player) player.visible = true;
+    for(let id in remotePlayers) {
+        remotePlayers[id].mesh.visible = true;
+        let lbl = remotePlayers[id].label;
+        if(lbl) { lbl.style.color = "white"; lbl.innerText = remotePlayers[id].data.username; }
+    }
+    startLevel();
+});
+
+
+// --- GAME CONFIG ---
+const CONFIG = {
+    moveSpeed: 0.2,
+    baseGhostSpeed: 0.035,
+    maxGhostSpeed: 0.16,
+    powerModeDuration: 8000,
+    wallSize: 4,
+    playerRadius: 0.8,
+    cameraHeight: 14, 
+    cameraDistance: 11, 
+    minimapZoom: 75 
+};
+
+const MAPS = [
+    [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,0,0,0,1,0,0,0,0,0,8,0,1],[1,0,1,1,1,0,1,0,1,1,1,1,1,0,1],[1,0,1,0,0,0,0,0,0,0,0,0,1,0,1],[1,0,1,0,1,1,0,1,1,1,1,0,1,0,1],[1,0,0,0,0,0,9,0,0,0,0,0,0,0,1],[1,0,1,0,1,1,1,1,1,0,1,1,1,0,1],[1,0,1,0,0,0,1,0,0,0,1,0,0,0,1],[1,0,1,1,1,0,1,0,1,0,1,0,1,1,1],[1,8,0,0,0,0,0,0,1,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,0,0,1,1,1,1,1,0,0,0,8,1],[1,0,1,1,0,0,0,0,0,0,0,1,1,0,1],[1,0,1,0,0,1,0,1,0,1,0,0,1,0,1],[1,0,0,0,1,0,0,9,0,0,1,0,0,0,1],[1,0,1,0,0,0,0,1,0,0,0,0,1,0,1],[1,0,1,1,0,1,0,1,0,1,0,1,1,0,1],[1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[1,1,0,1,1,1,0,1,0,1,1,1,0,1,1],[1,8,0,0,0,0,0,1,0,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,1,0,0,0,1,0,0,0,1,0,8,1],[1,0,0,1,0,1,0,1,0,1,0,1,0,0,1],[1,0,0,1,0,1,0,0,0,1,0,1,0,0,1],[1,0,0,0,0,1,1,0,1,1,0,0,0,0,1],[1,1,1,1,0,0,0,9,0,0,0,1,1,1,1],[1,0,0,0,0,1,1,0,1,1,0,0,0,0,1],[1,0,0,1,0,1,0,0,0,1,0,1,0,0,1],[1,0,0,1,0,1,0,1,0,1,0,1,0,0,1],[1,8,0,1,0,0,0,1,0,0,0,1,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,0,0,0,0,1,0,0,0,0,0,8,1],[1,1,1,1,1,1,0,1,0,1,1,1,1,1,1],[1,0,0,0,0,0,0,1,0,0,0,0,0,0,1],[1,0,1,1,1,1,0,0,0,1,1,1,1,0,1],[1,0,1,9,0,0,0,1,0,0,0,0,1,0,1],[1,0,1,1,1,1,0,0,0,1,1,1,1,0,1],[1,0,0,0,0,0,0,1,0,0,0,0,0,0,1],[1,1,1,1,1,1,0,1,0,1,1,1,1,1,1],[1,8,0,0,0,0,0,1,0,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,1,0,0,0,1,0,0,0,1,0,8,1],[1,0,0,1,0,1,0,0,0,1,0,1,0,0,1],[1,1,0,1,0,1,1,1,1,1,0,1,0,1,1],[1,0,0,0,0,0,0,1,0,0,0,0,0,0,1],[1,0,1,1,0,1,0,9,0,1,0,1,1,0,1],[1,0,0,0,0,1,0,0,0,1,0,0,0,0,1],[1,1,0,1,0,1,1,1,1,1,0,1,0,1,1],[1,0,0,1,0,0,0,0,0,0,0,1,0,0,1],[1,8,0,1,1,1,0,1,0,1,1,1,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,0,0,0,0,1,0,0,0,0,0,8,1],[1,0,1,1,1,1,0,1,0,1,1,1,1,0,1],[1,0,1,0,0,0,0,1,0,0,0,0,1,0,1],[1,0,1,0,1,0,0,9,0,0,1,0,1,0,1],[1,0,0,0,1,1,1,0,1,1,1,0,0,0,1],[1,0,1,0,1,0,0,0,0,0,1,0,1,0,1],[1,0,1,0,0,0,0,1,0,0,0,0,1,0,1],[1,0,1,1,1,1,0,1,0,1,1,1,1,0,1],[1,8,0,0,0,0,0,1,0,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,1,0,0,0,0,0,0,0,0,0,8,1],[1,0,0,1,0,1,1,1,1,1,0,1,1,1,1],[1,0,0,1,0,0,0,0,0,1,0,0,0,0,1],[1,1,0,1,1,1,1,1,0,1,1,1,1,0,1],[1,0,0,0,0,0,0,0,0,9,0,0,0,0,1],[1,0,1,1,1,0,1,1,1,1,0,1,0,1,1],[1,0,0,0,0,0,1,0,0,0,0,1,0,0,1],[1,1,1,1,0,1,1,0,1,0,0,1,0,0,1],[1,8,0,0,0,0,0,0,1,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,0,0,0,0,0,0,0,0,0,0,8,1],[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],[1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[1,0,1,0,1,0,1,9,1,0,1,0,1,0,1],[1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],[1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],[1,8,0,0,0,0,0,0,0,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,0,0,0,0,0,0,0,0,0,0,8,1],[1,0,1,1,1,1,1,1,1,1,1,1,1,0,1],[1,0,1,0,0,0,0,0,0,0,0,0,1,0,1],[1,0,1,0,1,1,1,1,1,1,1,0,1,0,1],[1,0,1,0,1,0,0,9,0,0,1,0,1,0,1],[1,0,1,0,1,1,1,0,1,1,1,0,1,0,1],[1,0,1,0,0,0,0,0,0,0,0,0,1,0,1],[1,0,1,1,1,1,1,1,1,1,1,1,1,0,1],[1,8,0,0,0,0,0,0,0,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,0,0,0,0,1,0,0,0,0,0,8,1],[1,0,0,0,0,0,0,1,0,0,0,0,0,0,1],[1,0,0,1,1,0,0,1,0,0,1,1,0,0,1],[1,0,0,1,0,0,0,1,0,0,0,1,0,0,1],[1,1,0,0,0,0,0,9,0,0,0,0,0,1,1],[1,0,0,1,0,0,0,1,0,0,0,1,0,0,1],[1,0,0,1,1,0,0,1,0,0,1,1,0,0,1],[1,0,0,0,0,0,0,1,0,0,0,0,0,0,1],[1,8,0,0,0,0,0,1,0,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]]
+];
+
+const CHARACTERS = {
+    ramona: { skin: 0xeebb99, shirt: 0x008080, shorts: 0x3d2314, hair: 0x3d2314, type: 'female_pony' },
+    pia:    { skin: 0xffdbac, shirt: 0x800080, shorts: 0x111111, hair: 0xffffaa, type: 'female_pony' },
+    sophie: { skin: 0xffe0bd, shirt: 0x00aa00, shorts: 0x222222, hair: 0xaa4400, type: 'female_pony' },
+    johnny: { skin: 0xeebb99, shirt: 0xffffff, shorts: 0x2a2a2a, hair: 0x222222, type: 'male_curly_braces' },
+    sebi:   { skin: 0xd2b48c, shirt: 0xff69b4, shorts: 0x444444, hair: 0x111111, type: 'male_buzz' }
+};
+
+let currentState = { level: 1, score: 0 };
+let scene, camera, renderer, mapCamera, mapRenderer, mapLight;
+let player, ghosts = [], walls = [], pellets = [], crucifixes = [], particles = [];
+let joystickData = { x: 0, y: 0, active: false };
+let playerParts = { group: null }; 
+let transparentWalls = [];
+
+const mapWidth = 15 * CONFIG.wallSize;
+const mapHeight = 11 * CONFIG.wallSize;
+const centerX = mapWidth / 2 - CONFIG.wallSize / 2;
+const centerZ = mapHeight / 2 - CONFIG.wallSize / 2;
+
+function initGame() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050505);
+    scene.fog = new THREE.FogExp2(0x050505, 0.02); 
+
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+    
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.getElementById('game-container').prepend(renderer.domElement);
+
+    setupMinimap();
+    
+    scene.add(new THREE.AmbientLight(0x909090)); 
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(50, 100, 50); dirLight.castShadow = true; scene.add(dirLight);
+
+    cameraRaycaster = new THREE.Raycaster();
+
+    setupJoystick();
+    window.addEventListener('resize', onWindowResize, false);
+    
+    startLevel();
+    animate();
+}
+
+function setupMinimap() {
+    const frustumSize = CONFIG.minimapZoom; 
+    mapCamera = new THREE.OrthographicCamera(frustumSize / -2, frustumSize / 2, frustumSize / 2, frustumSize / -2, 1, 100);
+    mapCamera.position.set(centerX, 50, centerZ); 
+    mapCamera.lookAt(centerX, 0, centerZ);
+    mapCamera.rotation.z = 0; 
+    
+    mapRenderer = new THREE.WebGLRenderer({ antialias: false });
+    mapRenderer.setSize(180, 140);
+    document.getElementById('minimap-container').appendChild(mapRenderer.domElement);
+    mapLight = new THREE.AmbientLight(0xffffff, 3.0); 
+}
+
+function createBrickTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#222'; ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = '#444'; 
+    ctx.fillRect(2, 2, 28, 28); ctx.fillRect(34, 2, 28, 28);
+    ctx.fillRect(2, 34, 28, 28); ctx.fillRect(34, 34, 28, 28);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.magFilter = THREE.NearestFilter; return texture;
+}
+
+function createFloorTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#181818'; ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = '#2a2a2a'; ctx.fillRect(0, 0, 32, 32); ctx.fillRect(32, 32, 32, 32);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(10, 10); return texture;
+}
+
+function startLevel() {
+    while(scene.children.length > 0){ scene.remove(scene.children[0]); }
+    ghosts = []; walls = []; pellets = []; crucifixes = []; particles = []; transparentWalls = [];
+    
+    scene.add(new THREE.AmbientLight(0x909090)); 
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(50, 100, 50); dirLight.castShadow = true; scene.add(dirLight);
+
+    document.getElementById('level-text').innerText = "LEVEL: " + currentState.level;
+    
+    const mapLayout = MAPS[(currentState.level - 1) % MAPS.length];
+    createLevelGeometry(mapLayout);
+
+    for (const id in remotePlayers) {
+        const rp = remotePlayers[id];
+        const mesh = createCharacterMesh(CHARACTERS[rp.data.character]);
+        mesh.position.set(rp.targetPos?.x || 0, 0, rp.targetPos?.z || 0);
+        rp.mesh = mesh;
+        scene.add(mesh);
+    }
+}
+
+function createCharacterMesh(charData) {
+    const group = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: charData.shirt });
+    const skinMat = new THREE.MeshStandardMaterial({ color: charData.skin });
+    const hairMat = new THREE.MeshStandardMaterial({ color: charData.hair });
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 0.35), mat);
+    body.position.y = 1.35; body.castShadow = true;
+    group.add(body);
+    
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.45, 0.4), skinMat);
+    head.position.y = 1.75; head.castShadow = true;
+    group.add(head);
+
+    if (charData.type === 'female_pony') {
+        const hairTop = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.15, 0.42), hairMat);
+        hairTop.position.y = 1.95; group.add(hairTop);
+        const hairBack = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.15), hairMat);
+        hairBack.position.set(0, 1.75, -0.18); group.add(hairBack);
+        const pony = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.6, 0.15), hairMat);
+        pony.position.set(0, 1.5, -0.25); pony.rotation.x = 0.2; group.add(pony);
+    } else if (charData.type === 'male_curly_braces') {
+        const h = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.2, 0.45), hairMat);
+        h.position.y=2.0; group.add(h);
+    } else if (charData.type === 'male_buzz') {
+        const h = new THREE.Mesh(new THREE.BoxGeometry(0.41, 0.05, 0.41), hairMat);
+        h.position.y=1.98; group.add(h);
+    }
+    
+    const l = new THREE.PointLight(0xffaa55, 0.3, 8);
+    l.position.set(0, 2, 0.5);
+    group.add(l);
+    
+    return group;
+}
+
+function spawnRemotePlayer(id, data) {
+    if(remotePlayers[id]) return; 
+    const charData = CHARACTERS[data.character] || CHARACTERS['ramona'];
+    const mesh = createCharacterMesh(charData);
+    mesh.position.set(data.x, 0, data.z);
+    
+    const div = document.createElement('div');
+    div.className = 'player-label';
+    div.innerText = data.username;
+    document.body.appendChild(div);
+
+    remotePlayers[id] = { mesh: mesh, data: data, label: div, targetPos: { x: data.x, z: data.z, rot: data.rotation } };
+    scene.add(mesh);
+}
+
+function spawnDeathParticles(x, z) {
+    for(let i=0; i<10; i++) {
+        const p = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.2,0.2), new THREE.MeshBasicMaterial({color:0x00ffff}));
+        p.position.set(x,1,z);
+        p.userData={vx:(Math.random()-0.5)*0.3, vy:Math.random()*0.3, vz:(Math.random()-0.5)*0.3, life:1.0};
+        scene.add(p); particles.push(p);
+    }
+}
+
+function createLevelGeometry(layout) {
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ map: createFloorTexture() }));
+    floor.rotation.x = -Math.PI/2;
+    scene.add(floor);
+
+    player = createCharacterMesh(CHARACTERS[selectedCharKey]);
+    playerParts.group = player; 
+    scene.add(player);
+    
+    const wallMat = new THREE.MeshStandardMaterial({ 
+        map: createBrickTexture(), color: 0x888888, transparent: true, opacity: 1.0 
+    });
+
+    let pelletIndex = 0;
+    for(let z=0; z<layout.length; z++){
+        for(let x=0; x<layout[z].length; x++){
+            const t = layout[z][x];
+            const px = x*CONFIG.wallSize, pz = z*CONFIG.wallSize;
+            if(t===1) {
+                const w = new THREE.Mesh(new THREE.BoxGeometry(4,6,4), wallMat.clone());
+                w.position.set(px,3,pz);
+                w.castShadow = true; w.receiveShadow = true;
+                w.userData = { box: new THREE.Box3().setFromObject(w) };
+                scene.add(w); walls.push(w);
+            } else if(t===0) {
+                const p = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({color:0x00ff00}));
+                p.position.set(px,1,pz);
+                p.userData = { index: pelletIndex++ };
+                scene.add(p); pellets.push(p);
+            } else if(t===8) {
+                 const group = new THREE.Group();
+                const m = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xaa8800 });
+                group.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.8, 0.2), m));
+                const h = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.4, 0.2), m); h.position.y=0.3; group.add(h);
+                group.position.set(px,1,pz);
+                group.userData = { index: pelletIndex++ }; 
+                scene.add(group); crucifixes.push(group);
+            } else if(t===9) {
+                player.position.set(px,0,pz);
+            }
+        }
+    }
+
+    const spawnPoints = [{x: 1, z: 1}, {x: 13, z: 1}, {x: 1, z: 9}, {x: 13, z: 9}];
+    for(let i=0; i<4; i++) {
+        const gGroup = new THREE.Group();
+        const gBody = new THREE.Mesh(new THREE.BoxGeometry(0.6,1.4,0.35), new THREE.MeshStandardMaterial({color:0xeeeeee}));
+        gBody.position.y=0.7; gBody.name="ghostPart"; gGroup.add(gBody);
+        const gHead = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5), new THREE.MeshStandardMaterial({color:0xd0d0d0}));
+        gHead.position.y=1.65; gHead.name="ghostPart"; gGroup.add(gHead);
+        const hair = new THREE.Mesh(new THREE.BoxGeometry(0.52,0.8,0.15), new THREE.MeshStandardMaterial({color:0x000000}));
+        hair.position.set(0,1.5,-0.26); gGroup.add(hair);
+
+        let sp = spawnPoints[i % spawnPoints.length];
+        gGroup.position.set(sp.x * CONFIG.wallSize, 0, sp.z * CONFIG.wallSize);
+        scene.add(gGroup);
+        ghosts.push(gGroup);
+    }
+}
+
+function updateScoreUI() {
+    document.getElementById('score-text').innerText = "SCORE: " + currentState.score;
+}
+
+function activatePowerModeVisuals() {
+    const msg = document.getElementById('status-message');
+    msg.innerHTML = "KRUZIFIX AKTIV!<br>TOAST THE GHOST!";
+    msg.style.display = 'block';
+    
+    ghosts.forEach(g => {
+        g.traverse(c => { if(c.name==="ghostPart") c.material.color.setHex(0x3333ff); });
+    });
+
+    if(powerModeTimeout) clearTimeout(powerModeTimeout);
+    powerModeTimeout = setTimeout(() => { 
+        isPowerMode = false; // Reset local status
+        msg.style.display = 'none'; 
+        ghosts.forEach(g => {
+            g.traverse(c => { 
+                if(c.name==="ghostPart") {
+                    if(c.geometry.type.includes("Box") && c.position.y < 1) c.material.color.setHex(0xeeeeee);
+                    else c.material.color.setHex(0xd0d0d0);
+                } 
+            });
+        });
+    }, CONFIG.powerModeDuration);
+}
+
+function updateGameLogic() {
+    if (amIDead) return;
+
+    if (joystickData.active) {
+        const speed = CONFIG.moveSpeed;
+        const tx = player.position.x + joystickData.x * speed;
+        const tz = player.position.z + joystickData.y * speed;
+        if(!checkWall(tx, player.position.z)) player.position.x = tx;
+        if(!checkWall(player.position.x, tz)) player.position.z = tz;
+        if (Math.abs(joystickData.x) > 0.1 || Math.abs(joystickData.y) > 0.1) {
+            player.rotation.y = Math.atan2(joystickData.x, joystickData.y);
+        }
+        socket.emit('playerMove', { room: myRoomId, x: player.position.x, z: player.position.z, rotation: player.rotation.y });
+    }
+
+    for(const id in remotePlayers) {
+        const rp = remotePlayers[id];
+        if(rp.targetPos) {
+            rp.mesh.position.x += (rp.targetPos.x - rp.mesh.position.x) * 0.3;
+            rp.mesh.position.z += (rp.targetPos.z - rp.mesh.position.z) * 0.3;
+            rp.mesh.rotation.y = rp.targetPos.rot;
+            
+            const vec = rp.mesh.position.clone(); vec.y += 2.5; vec.project(camera);
+            const x = (vec.x * .5 + .5) * window.innerWidth;
+            const y = (-(vec.y * .5) + .5) * window.innerHeight;
+            if (Math.abs(vec.z) < 1 && rp.mesh.visible) {
+                rp.label.style.display = 'block'; rp.label.style.left = x + 'px'; rp.label.style.top = y + 'px';
+            } else rp.label.style.display = 'none';
+        }
+    }
+
+    pellets.forEach(p => {
+        if(p.visible && player.position.distanceTo(p.position) < 1.5) {
+            p.visible = false; socket.emit('itemCollected', { room: myRoomId, type: 'pellet', index: p.userData.index });
+        }
+    });
+    crucifixes.forEach(c => {
+         if(c.visible && player.position.distanceTo(c.position) < 2.0) {
+            c.visible = false; socket.emit('itemCollected', { room: myRoomId, type: 'crucifix', index: c.userData.index });
         }
     });
 
-    socket.on('ghostEliminated', ({ room, ghostId }) => {
-         if(rooms[room]) {
-             rooms[room].score += 500;
-             io.to(room).emit('ghostDied', { ghostId, newScore: rooms[room].score });
-         }
-    });
+    // 4. Host Logic
+    if (isHost && ghosts.length > 0) {
+        const ghostUpdates = [];
+        ghosts.forEach((g, i) => {
+            if(!g.visible) return;
+            
+            let target = null;
+            let minDist = 9999;
 
-    socket.on('playerKilled', ({ room, playerId }) => {
-        if (rooms[room] && rooms[room].players[playerId]) {
-            if(!rooms[room].players[playerId].isDead) {
-                rooms[room].players[playerId].isDead = true;
-                io.to(room).emit('playerDied', { playerId });
-
-                // Check Game Over
-                const allDead = Object.values(rooms[room].players).every(p => p.isDead);
-                if (allDead) {
-                    io.to(room).emit('gameOver', { finalScore: rooms[room].score });
-                    // Score Reset nach Game Over
-                    rooms[room].score = 0;
-                    rooms[room].level = 1;
-                    rooms[room].pelletsRemoved = [];
-                    rooms[room].crucifixesRemoved = [];
-                    for(let pid in rooms[room].players) rooms[room].players[pid].isDead = false;
+            if (!amIDead) {
+                const d = g.position.distanceTo(player.position);
+                if (d < minDist) { minDist = d; target = player.position; }
+            }
+            for(let id in remotePlayers) {
+                const rp = remotePlayers[id];
+                if (rp.mesh.visible) {
+                    const d = g.position.distanceTo(rp.mesh.position);
+                    if (d < minDist) { minDist = d; target = rp.mesh.position; }
                 }
             }
-        }
-    });
-    
-    socket.on('levelFinished', ({ room }) => {
-        if(rooms[room]) {
-            // Level hochzählen
-            rooms[room].level++;
-            // Items zurücksetzen für neue Map
-            rooms[room].pelletsRemoved = [];
-            rooms[room].crucifixesRemoved = [];
-            
-            // Spieler heilen
-            for(let pid in rooms[room].players) {
-                rooms[room].players[pid].isDead = false;
+
+            if (target) {
+                const dir = new THREE.Vector3().subVectors(target, g.position).normalize();
+                const speed = CONFIG.baseGhostSpeed * 0.5; 
+                let nx = g.position.x + dir.x * speed;
+                let nz = g.position.z + dir.z * speed;
+                if(!checkWall(nx, g.position.z)) g.position.x = nx;
+                if(!checkWall(g.position.x, nz)) g.position.z = nz;
             }
 
-            io.to(room).emit('startNextLevel', { level: rooms[room].level });
-        }
-    });
-
-    socket.on('disconnect', () => {
-        for (const roomId in rooms) {
-            if (rooms[roomId].players[socket.id]) {
-                delete rooms[roomId].players[socket.id];
-                io.to(roomId).emit('playerLeft', socket.id);
-                
-                // Host Migration
-                if (rooms[roomId].hostId === socket.id) {
-                    const remainingIds = Object.keys(rooms[roomId].players);
-                    if (remainingIds.length > 0) {
-                        rooms[roomId].hostId = remainingIds[0];
-                        io.to(remainingIds[0]).emit('youAreHost'); 
+            ghostUpdates.push({ x: g.position.x, z: g.position.z, index: i });
+            
+            // LOGIC FIX: USE GLOBAL isPowerMode VARIABLE
+            if (!amIDead && g.position.distanceTo(player.position) < 1.5) {
+                 if(isPowerMode) {
+                     socket.emit('ghostEliminated', { room: myRoomId, ghostId: i });
+                 } else {
+                     socket.emit('playerKilled', { room: myRoomId, playerId: socket.id });
+                 }
+            }
+            
+            for(let id in remotePlayers) {
+                const rp = remotePlayers[id];
+                if (rp.mesh.visible && g.position.distanceTo(rp.mesh.position) < 1.5) {
+                    if(isPowerMode) {
+                        socket.emit('ghostEliminated', { room: myRoomId, ghostId: i });
                     } else {
-                        delete rooms[roomId]; 
+                        socket.emit('playerKilled', { room: myRoomId, playerId: id });
                     }
                 }
-                break;
             }
-        }
-    });
-});
+        });
+        socket.emit('ghostsUpdate', { room: myRoomId, ghostsData: ghostUpdates });
+    }
+    
+    // LEVEL END FIX: Just check Items
+    if(isHost) {
+        let itemsLeft = pellets.some(p => p.visible) || crucifixes.some(c => c.visible);
+        if(!itemsLeft) socket.emit('levelFinished', { room: myRoomId });
+    }
 
-const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+    for(let i = particles.length -1; i>=0; i--) {
+        const p = particles[i];
+        p.position.add(new THREE.Vector3(p.userData.vx, p.userData.vy, p.userData.vz));
+        p.userData.vy -= 0.01; p.userData.life -= 0.05; p.scale.setScalar(p.userData.life);
+        if(p.userData.life <= 0) { scene.remove(p); particles.splice(i, 1); }
+    }
+
+    updateCamera();
+}
+
+function updateCamera() {
+    const targetX = player.position.x;
+    const targetZ = player.position.z + CONFIG.cameraDistance; 
+    
+    camera.position.x += (targetX - camera.position.x) * 0.1;
+    camera.position.z += (targetZ - camera.position.z) * 0.1;
+    camera.position.y = CONFIG.cameraHeight; 
+    camera.lookAt(player.position.x, player.position.y, player.position.z); 
+
+    transparentWalls.forEach(w => { w.material.opacity = 1.0; w.material.transparent = true; });
+    transparentWalls = [];
+    const dir = new THREE.Vector3().subVectors(player.position, camera.position).normalize();
+    cameraRaycaster.set(camera.position, dir);
+    const hits = cameraRaycaster.intersectObjects(walls);
+    const dist = player.position.distanceTo(camera.position);
+    for(let hit of hits) {
+        if(hit.distance < dist - 2) {
+            hit.object.material.opacity = 0.2;
+            transparentWalls.push(hit.object);
+        }
+    }
+}
+
+function checkWall(x, z) {
+    for(let w of walls) {
+        const b = w.userData.box;
+        if(x > b.min.x - 0.8 && x < b.max.x + 0.8 && z > b.min.z - 0.8 && z < b.max.z + 0.8) return true;
+    }
+    return false;
+}
+
+function setupJoystick() {
+    const zone = document.getElementById('joystick-zone');
+    const knob = document.getElementById('joystick-knob');
+    const center = { x: 60, y: 60 };
+    function handle(e) {
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const rect = zone.getBoundingClientRect();
+        const dx = clientX - rect.left - center.x;
+        const dy = clientY - rect.top - center.y;
+        const dist = Math.min(Math.sqrt(dx*dx+dy*dy), 35);
+        const ang = Math.atan2(dy, dx);
+        joystickData.active = true;
+        joystickData.x = (Math.cos(ang)*dist)/35;
+        joystickData.y = (Math.sin(ang)*dist)/35;
+        knob.style.transform = `translate(calc(-50% + ${Math.cos(ang)*dist}px), calc(-50% + ${Math.sin(ang)*dist}px))`;
+    }
+    zone.addEventListener('mousedown', e => { handle(e); zone.onmousemove = handle; });
+    window.addEventListener('mouseup', () => { zone.onmousemove = null; joystickData.active=false; knob.style.transform='translate(-50%,-50%)'; });
+    zone.addEventListener('touchstart', e => { e.preventDefault(); handle(e); });
+    zone.addEventListener('touchmove', e => { e.preventDefault(); handle(e); });
+    zone.addEventListener('touchend', () => { joystickData.active=false; knob.style.transform='translate(-50%,-50%)'; });
+}
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    updateGameLogic();
+    renderer.render(scene, camera);
+    const oldFog = scene.fog; scene.fog = null; scene.add(mapLight);
+    mapRenderer.render(scene, mapCamera);
+    scene.remove(mapLight); scene.fog = oldFog;
+}
+
+</script>
+</body>
+</html>
 
 
