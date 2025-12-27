@@ -60,19 +60,25 @@ io.on('connection', (socket) => {
 
     socket.on('itemCollected', ({ room, type, index }) => {
         if (!rooms[room]) return;
+        
+        let updateNeeded = false;
         if (type === 'pellet') {
             if (!rooms[room].pelletsRemoved.includes(index)) {
                 rooms[room].pelletsRemoved.push(index);
                 rooms[room].score += 10;
-                io.to(room).emit('itemRemoved', { type, index, newScore: rooms[room].score });
+                updateNeeded = true;
             }
         } else if (type === 'crucifix') {
              if (!rooms[room].crucifixesRemoved.includes(index)) {
                 rooms[room].crucifixesRemoved.push(index);
                 rooms[room].score += 50;
-                io.to(room).emit('itemRemoved', { type, index, newScore: rooms[room].score });
-                io.to(room).emit('powerModeActivated');
+                updateNeeded = true;
+                io.to(room).emit('powerModeActivated'); // WICHTIG: Signal an alle!
             }
+        }
+
+        if(updateNeeded) {
+            io.to(room).emit('itemRemoved', { type, index, newScore: rooms[room].score });
         }
     });
 
@@ -83,22 +89,21 @@ io.on('connection', (socket) => {
          }
     });
 
-    // --- NEU: Spieler Eliminierung ---
     socket.on('playerKilled', ({ room, playerId }) => {
         if (rooms[room] && rooms[room].players[playerId]) {
-            // Nur töten, wenn noch nicht tot
             if(!rooms[room].players[playerId].isDead) {
                 rooms[room].players[playerId].isDead = true;
                 io.to(room).emit('playerDied', { playerId });
 
-                // Check Game Over (Alle tot?)
+                // Check Game Over
                 const allDead = Object.values(rooms[room].players).every(p => p.isDead);
                 if (allDead) {
                     io.to(room).emit('gameOver', { finalScore: rooms[room].score });
-                    // Score Reset bei Game Over?
+                    // Score Reset nach Game Over
                     rooms[room].score = 0;
                     rooms[room].level = 1;
-                    // Reset Spieler
+                    rooms[room].pelletsRemoved = [];
+                    rooms[room].crucifixesRemoved = [];
                     for(let pid in rooms[room].players) rooms[room].players[pid].isDead = false;
                 }
             }
@@ -107,11 +112,13 @@ io.on('connection', (socket) => {
     
     socket.on('levelFinished', ({ room }) => {
         if(rooms[room]) {
+            // Level hochzählen
             rooms[room].level++;
+            // Items zurücksetzen für neue Map
             rooms[room].pelletsRemoved = [];
             rooms[room].crucifixesRemoved = [];
             
-            // ALLE WIEDERBELEBEN für nächstes Level
+            // Spieler heilen
             for(let pid in rooms[room].players) {
                 rooms[room].players[pid].isDead = false;
             }
@@ -125,6 +132,8 @@ io.on('connection', (socket) => {
             if (rooms[roomId].players[socket.id]) {
                 delete rooms[roomId].players[socket.id];
                 io.to(roomId).emit('playerLeft', socket.id);
+                
+                // Host Migration
                 if (rooms[roomId].hostId === socket.id) {
                     const remainingIds = Object.keys(rooms[roomId].players);
                     if (remainingIds.length > 0) {
