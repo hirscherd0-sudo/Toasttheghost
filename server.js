@@ -4,68 +4,53 @@ const http = require('http').createServer(app);
 const io = require('socket.io')(http);
 const path = require('path');
 
-// Statische Dateien aus dem 'public' Ordner servieren
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Routen
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Spiel-Zustand Speicher (im RAM)
 const rooms = {};
 
 io.on('connection', (socket) => {
-    console.log('Ein Spieler hat sich verbunden:', socket.id);
+    console.log('Verbindung:', socket.id);
 
     socket.on('joinRoom', ({ room, character, username }) => {
         socket.join(room);
 
-        // Raum initialisieren falls nicht existent
         if (!rooms[room]) {
             rooms[room] = {
                 players: {},
-                ghosts: [], 
-                pelletsRemoved: [], 
+                ghosts: [],
+                pelletsRemoved: [],
                 crucifixesRemoved: [],
-                hostId: socket.id, // Der erste Spieler ist Host
-                level: 1
+                hostId: socket.id,
+                level: 1,
+                score: 0
             };
         }
 
-        // Spieler hinzufügen
         rooms[room].players[socket.id] = {
             id: socket.id,
-            x: 0, 
-            z: 0,
-            rotation: 0,
-            character: character, 
+            x: 0, z: 0, rotation: 0,
+            character: character,
             username: username,
             isDead: false
         };
 
-        // Dem Spieler den aktuellen State senden
         socket.emit('currentRoomState', rooms[room]);
-
-        // Allen anderen sagen: "Neuer Spieler da"
         socket.to(room).emit('playerJoined', rooms[room].players[socket.id]);
-
-        console.log(`${username} joined room ${room}`);
     });
 
-    // Spieler bewegt sich
     socket.on('playerMove', ({ room, x, z, rotation }) => {
         if (rooms[room] && rooms[room].players[socket.id]) {
-            const p = rooms[room].players[socket.id];
-            p.x = x;
-            p.z = z;
-            p.rotation = rotation;
-            // Position an alle anderen senden (außer an sich selbst)
+            rooms[room].players[socket.id].x = x;
+            rooms[room].players[socket.id].z = z;
+            rooms[room].players[socket.id].rotation = rotation;
             socket.to(room).emit('playerMoved', { id: socket.id, x, z, rotation });
         }
     });
 
-    // Host sendet Geister-Updates
     socket.on('ghostsUpdate', ({ room, ghostsData }) => {
         if (rooms[room]) {
             rooms[room].ghosts = ghostsData;
@@ -73,55 +58,76 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Ein Item wurde gesammelt 
     socket.on('itemCollected', ({ room, type, index }) => {
         if (!rooms[room]) return;
-        
         if (type === 'pellet') {
             if (!rooms[room].pelletsRemoved.includes(index)) {
                 rooms[room].pelletsRemoved.push(index);
-                io.to(room).emit('itemRemoved', { type, index });
+                rooms[room].score += 10;
+                io.to(room).emit('itemRemoved', { type, index, newScore: rooms[room].score });
             }
         } else if (type === 'crucifix') {
              if (!rooms[room].crucifixesRemoved.includes(index)) {
                 rooms[room].crucifixesRemoved.push(index);
-                io.to(room).emit('itemRemoved', { type, index });
-                // Power Mode für alle!
+                rooms[room].score += 50;
+                io.to(room).emit('itemRemoved', { type, index, newScore: rooms[room].score });
                 io.to(room).emit('powerModeActivated');
             }
         }
     });
 
-    // Ein Geist wurde eliminiert
     socket.on('ghostEliminated', ({ room, ghostId }) => {
-         io.to(room).emit('ghostDied', { ghostId });
+         if(rooms[room]) {
+             rooms[room].score += 500;
+             io.to(room).emit('ghostDied', { ghostId, newScore: rooms[room].score });
+         }
+    });
+
+    // --- NEU: Spieler Eliminierung ---
+    socket.on('playerKilled', ({ room, playerId }) => {
+        if (rooms[room] && rooms[room].players[playerId]) {
+            // Nur töten, wenn noch nicht tot
+            if(!rooms[room].players[playerId].isDead) {
+                rooms[room].players[playerId].isDead = true;
+                io.to(room).emit('playerDied', { playerId });
+
+                // Check Game Over (Alle tot?)
+                const allDead = Object.values(rooms[room].players).every(p => p.isDead);
+                if (allDead) {
+                    io.to(room).emit('gameOver', { finalScore: rooms[room].score });
+                    // Reset Room für Neustart könnte hier folgen, oder Reload durch Client
+                }
+            }
+        }
     });
     
-    // Level beendet
     socket.on('levelFinished', ({ room }) => {
         if(rooms[room]) {
             rooms[room].level++;
             rooms[room].pelletsRemoved = [];
             rooms[room].crucifixesRemoved = [];
+            
+            // ALLE WIEDERBELEBEN für nächstes Level
+            for(let pid in rooms[room].players) {
+                rooms[room].players[pid].isDead = false;
+            }
+
             io.to(room).emit('startNextLevel', { level: rooms[room].level });
         }
     });
 
     socket.on('disconnect', () => {
-        // Suche Raum des Spielers
         for (const roomId in rooms) {
             if (rooms[roomId].players[socket.id]) {
                 delete rooms[roomId].players[socket.id];
                 io.to(roomId).emit('playerLeft', socket.id);
-
-                // Wenn Host geht, neuen Host bestimmen
                 if (rooms[roomId].hostId === socket.id) {
                     const remainingIds = Object.keys(rooms[roomId].players);
                     if (remainingIds.length > 0) {
                         rooms[roomId].hostId = remainingIds[0];
                         io.to(remainingIds[0]).emit('youAreHost'); 
                     } else {
-                        delete rooms[roomId]; // Raum leer
+                        delete rooms[roomId]; 
                     }
                 }
                 break;
@@ -132,7 +138,7 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 http.listen(PORT, () => {
-    console.log(`Toast the Ghost Server running on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
 
 
