@@ -28,7 +28,7 @@ io.on('connection', (socket) => {
                 level: 1,
                 score: 0,
                 isTransitioning: false,
-                powerModeActive: false, // Server-Status
+                powerModeActive: false,
                 powerModeTimer: null
             };
         }
@@ -41,10 +41,10 @@ io.on('connection', (socket) => {
             isDead: false
         };
 
+        // Sende aktuellen Status inklusive PowerMode
         socket.emit('currentRoomState', {
             ...rooms[room],
-            // Timer Objekt nicht senden, ist server-intern
-            powerModeTimer: undefined 
+            powerModeTimer: undefined
         });
         socket.to(room).emit('playerJoined', rooms[room].players[socket.id]);
     });
@@ -57,6 +57,7 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Host steuert nur die BEWEGUNG der Geister
     socket.on('ghostsUpdate', ({ room, ghostsData }) => {
         if (rooms[room]) {
             rooms[room].ghosts = ghostsData;
@@ -68,7 +69,6 @@ io.on('connection', (socket) => {
         if (!rooms[room] || rooms[room].isTransitioning) return;
         
         let updateNeeded = false;
-        
         if (type === 'pellet') {
             if (!rooms[room].pelletsRemoved.includes(index)) {
                 rooms[room].pelletsRemoved.push(index);
@@ -81,16 +81,12 @@ io.on('connection', (socket) => {
                 rooms[room].score += 50;
                 updateNeeded = true;
                 
-                // --- SERVER POWER MODE LOGIC ---
+                // Power Mode Logic
                 rooms[room].powerModeActive = true;
-                
-                // Alten Timer löschen falls vorhanden (Verlängerung)
                 if (rooms[room].powerModeTimer) clearTimeout(rooms[room].powerModeTimer);
                 
-                // An alle senden: AN
                 io.to(room).emit('powerModeChanged', { active: true });
                 
-                // Nach 8 Sekunden ausschalten
                 rooms[room].powerModeTimer = setTimeout(() => {
                     if(rooms[room]) {
                         rooms[room].powerModeActive = false;
@@ -106,31 +102,34 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('ghostEliminated', ({ room, ghostId }) => {
-         // Server Check: Darf Geist getötet werden?
+    // CLIENT MELDET: Ich habe Geist getötet
+    socket.on('clientHitGhost', ({ room, ghostId }) => {
          if(rooms[room] && !rooms[room].isTransitioning && rooms[room].powerModeActive) {
+             // Validierung ok
              rooms[room].score += 500;
              io.to(room).emit('ghostDied', { ghostId, newScore: rooms[room].score });
          }
     });
 
-    socket.on('playerKilled', ({ room, playerId }) => {
+    // CLIENT MELDET: Ich wurde getötet
+    socket.on('clientDied', ({ room }) => {
+        const playerId = socket.id;
         if (rooms[room] && rooms[room].players[playerId] && !rooms[room].isTransitioning) {
             
-            // Server Check: Ist Power Mode an? Falls ja, ignorieren wir den Kill-Versuch!
-            // Das schützt Spieler, wenn der Host laggt.
-            if(rooms[room].powerModeActive) {
-                console.log("Player kill blocked due to PowerMode");
-                return; 
-            }
+            // Wenn PowerMode an ist, sollte man eigentlich nicht sterben.
+            // Aber wenn der Client sagt "Ich bin tot" (z.B. weil Timer bei ihm ablief), akzeptieren wir es zur Sicherheit?
+            // Besser: Server Authority Check für PowerMode.
+            if(rooms[room].powerModeActive) return; // Schutz
 
             if(!rooms[room].players[playerId].isDead) {
                 rooms[room].players[playerId].isDead = true;
                 io.to(room).emit('playerDied', { playerId });
 
+                // Check Game Over
                 const allDead = Object.values(rooms[room].players).every(p => p.isDead);
                 if (allDead) {
                     io.to(room).emit('gameOver', { finalScore: rooms[room].score });
+                    // Reset
                     rooms[room].isTransitioning = false; 
                     rooms[room].level = 1;
                     rooms[room].score = 0;
@@ -149,7 +148,7 @@ io.on('connection', (socket) => {
             rooms[room].level++;
             rooms[room].pelletsRemoved = [];
             rooms[room].crucifixesRemoved = [];
-            rooms[room].powerModeActive = false; // Reset Power Mode
+            rooms[room].powerModeActive = false;
             if(rooms[room].powerModeTimer) clearTimeout(rooms[room].powerModeTimer);
 
             for(let pid in rooms[room].players) rooms[room].players[pid].isDead = false;
