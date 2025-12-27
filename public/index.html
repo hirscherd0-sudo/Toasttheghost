@@ -5,106 +5,70 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Toast the Ghost - Multiplayer</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; }
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; user-select: none; }
         #game-container { position: relative; width: 100vw; height: 100vh; display: none; } 
         
-        /* --- LOBBY STYLES --- */
+        /* --- LOBBY --- */
         #lobby-container {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: #111;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 100;
-            color: white;
-            background-image: radial-gradient(circle at center, #222 0%, #000 100%);
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #111; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 100;
+            color: white; background-image: radial-gradient(circle at center, #222 0%, #000 100%);
         }
-        
         .title-logo {
-            font-size: 50px;
-            color: #ffcc00;
-            text-shadow: 4px 4px 0px #a00, 0 0 20px #ff0000;
-            font-weight: 900;
-            letter-spacing: 5px;
-            margin-bottom: 40px;
-            text-align: center;
-            text-transform: uppercase;
+            font-size: 40px; color: #ffcc00; text-shadow: 4px 4px 0px #a00, 0 0 20px #ff0000;
+            font-weight: 900; letter-spacing: 3px; margin-bottom: 30px; text-align: center;
         }
-
         .lobby-input {
-            padding: 15px;
-            font-size: 18px;
-            margin: 10px;
-            background: #222;
-            border: 2px solid #555;
-            color: #fff;
-            width: 250px;
-            text-align: center;
-            border-radius: 5px;
+            padding: 12px; font-size: 16px; margin: 8px; background: #222;
+            border: 2px solid #555; color: #fff; width: 220px; text-align: center; border-radius: 5px;
         }
-        .lobby-input:focus { border-color: #ffcc00; outline: none; }
-
         .lobby-btn {
-            padding: 15px 30px;
-            font-size: 20px;
-            background: #a00;
-            color: white;
-            border: none;
-            cursor: pointer;
-            margin-top: 30px;
-            border-radius: 8px;
-            font-weight: bold;
-            box-shadow: 0 4px 0 #500;
-            transition: transform 0.1s;
+            padding: 15px 40px; font-size: 20px; background: #a00; color: white;
+            border: none; cursor: pointer; margin-top: 25px; border-radius: 8px;
+            font-weight: bold; box-shadow: 0 4px 0 #500;
         }
-        .lobby-btn:hover { background: #c00; }
-        .lobby-btn:active { transform: translateY(4px); box-shadow: 0 0 0 #500; }
+        .lobby-btn:active { transform: translateY(4px); box-shadow: none; }
         
-        .char-grid {
-            display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px;
-        }
+        .char-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 15px; }
         .char-select {
-            padding: 15px; border: 2px solid #444; cursor: pointer; text-align: center;
-            background: #1a1a1a; border-radius: 5px;
+            padding: 10px; border: 2px solid #444; cursor: pointer; text-align: center;
+            background: #1a1a1a; border-radius: 5px; font-size: 14px;
         }
-        .char-select:hover { border-color: #888; }
         .char-select.selected { border-color: #ffcc00; background: #333; box-shadow: 0 0 10px #ffcc00; }
 
-        /* --- GAME UI --- */
+        /* --- HUD --- */
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
-        #stats-container { position: absolute; top: 20px; left: 20px; display: flex; flex-direction: column; gap: 5px; }
-        .stat-text { color: #ffcc00; font-size: 24px; text-shadow: 2px 2px 0 #000; font-weight: bold; }
-        
-        #status-message {
-            position: absolute; top: 20%; left: 50%; transform: translateX(-50%);
-            color: #00ffff; font-size: 24px; font-weight: bold; text-shadow: 0 0 10px #0000ff;
-            display: none; text-align: center; background: rgba(0,0,0,0.7);
-            padding: 15px; border: 2px solid #00ffff; border-radius: 8px;
-        }
+        #stats-container { position: absolute; top: 20px; left: 20px; }
+        .stat-text { color: #ffcc00; font-size: 20px; text-shadow: 2px 2px 0 #000; font-weight: bold; margin-bottom: 5px; }
         
         #minimap-container {
-            position: absolute; top: 20px; right: 20px; width: 200px; height: 150px;
-            border: 4px solid #888; background: #222; pointer-events: none;
+            position: absolute; top: 20px; right: 20px; width: 180px; height: 140px;
+            border: 3px solid #666; background: #000;
         }
         
-        /* Joystick */
+        #status-message {
+            position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
+            color: #00ffff; font-size: 24px; font-weight: bold; text-shadow: 0 0 10px #0000ff;
+            display: none; text-align: center; background: rgba(0,0,0,0.8);
+            padding: 20px; border: 2px solid #00ffff; border-radius: 10px; z-index: 20;
+        }
+
+        /* --- JOYSTICK --- */
         #joystick-zone {
-            position: absolute; bottom: 50px; left: 50px; width: 120px; height: 120px;
+            position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px;
             background: rgba(255, 255, 255, 0.1); border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.3); pointer-events: auto; touch-action: none; z-index: 10;
+            border: 2px solid rgba(255, 255, 255, 0.3); pointer-events: auto; touch-action: none;
         }
         #joystick-knob {
             position: absolute; top: 50%; left: 50%; width: 50px; height: 50px;
             background: rgba(200, 200, 200, 0.5); border-radius: 50%;
-            transform: translate(-50%, -50%); pointer-events: none;
+            transform: translate(-50%, -50%);
         }
         
-        /* Labels für andere Spieler */
         .player-label {
-            position: absolute; color: white; background: rgba(0,0,0,0.5); padding: 2px 5px;
-            font-size: 12px; pointer-events: none; border-radius: 4px; display: none;
+            position: absolute; color: white; background: rgba(0,0,0,0.6); padding: 2px 6px;
+            font-size: 11px; pointer-events: none; border-radius: 4px; display: none;
         }
     </style>
 </head>
@@ -113,12 +77,9 @@
 <!-- LOBBY -->
 <div id="lobby-container">
     <div class="title-logo">TOAST THE GHOST</div>
-    <div style="color: #aaa; margin-bottom: 20px;">MULTIPLAYER EDITION</div>
-    
-    <input type="text" id="username-input" class="lobby-input" placeholder="Dein Name" maxlength="10">
-    <input type="text" id="room-input" class="lobby-input" placeholder="Raum Name (z.B. 'Keller')" maxlength="10">
+    <input type="text" id="username-input" class="lobby-input" placeholder="Name" maxlength="10">
+    <input type="text" id="room-input" class="lobby-input" placeholder="Raum (z.B. 1)" maxlength="10">
 
-    <h3 style="margin-top: 20px;">Wähle deinen Geisterjäger:</h3>
     <div class="char-grid">
         <div class="char-select selected" onclick="selectLobbyChar('ramona', this)">Ramona</div>
         <div class="char-select" onclick="selectLobbyChar('pia', this)">Pia</div>
@@ -134,8 +95,8 @@
 <div id="game-container">
     <div id="ui-layer">
         <div id="stats-container">
-            <div id="score-text" class="stat-text">Punkte: 0</div>
-            <div id="level-text" class="stat-text">Level: 1</div>
+            <div id="score-text" class="stat-text">SCORE: 0</div>
+            <div id="level-text" class="stat-text">LEVEL: 1</div>
         </div>
         <div id="minimap-container"></div>
         <div id="status-message"></div>
@@ -150,10 +111,8 @@
 // --- SOCKET & LOBBY LOGIC ---
 const socket = io();
 let myRoomId = null;
-let myClientId = null;
 let selectedCharKey = 'ramona';
 let isHost = false; 
-
 const remotePlayers = {}; 
 
 function selectLobbyChar(key, elem) {
@@ -164,7 +123,7 @@ function selectLobbyChar(key, elem) {
 
 function joinGame() {
     const username = document.getElementById('username-input').value.trim() || "Jäger";
-    const room = document.getElementById('room-input').value.trim() || "Spukhaus";
+    const room = document.getElementById('room-input').value.trim() || "1";
     myRoomId = room;
 
     document.getElementById('lobby-container').style.display = 'none';
@@ -174,12 +133,10 @@ function joinGame() {
     initGame();
 }
 
-// --- NETWORK EVENT HANDLERS ---
+// --- NETWORK HANDLERS ---
 socket.on('currentRoomState', (roomState) => {
     for (const id in roomState.players) {
-        if (id !== socket.id) {
-            spawnRemotePlayer(id, roomState.players[id]);
-        }
+        if (id !== socket.id) spawnRemotePlayer(id, roomState.players[id]);
     }
     currentState.level = roomState.level;
     roomState.pelletsRemoved.forEach(idx => {
@@ -193,17 +150,10 @@ socket.on('currentRoomState', (roomState) => {
     if (roomState.hostId === socket.id) isHost = true;
 });
 
-socket.on('playerJoined', (playerData) => {
-    spawnRemotePlayer(playerData.id, playerData);
+socket.on('playerJoined', (pd) => spawnRemotePlayer(pd.id, pd));
+socket.on('playerMoved', (d) => {
+    if (remotePlayers[d.id]) remotePlayers[d.id].targetPos = { x: d.x, z: d.z, rot: d.rotation };
 });
-
-socket.on('playerMoved', (data) => {
-    if (remotePlayers[data.id]) {
-        const rp = remotePlayers[data.id];
-        rp.targetPos = { x: data.x, z: data.z, rot: data.rotation };
-    }
-});
-
 socket.on('playerLeft', (id) => {
     if (remotePlayers[id]) {
         scene.remove(remotePlayers[id].mesh);
@@ -211,37 +161,27 @@ socket.on('playerLeft', (id) => {
         delete remotePlayers[id];
     }
 });
-
 socket.on('youAreHost', () => { isHost = true; });
-
-socket.on('ghostsUpdated', (ghostsData) => {
+socket.on('ghostsUpdated', (gData) => {
     if (!isHost) {
-        for (let i = 0; i < ghostsData.length; i++) {
+        for (let i = 0; i < gData.length; i++) {
             if (ghosts[i]) {
-                ghosts[i].position.x = ghostsData[i].x;
-                ghosts[i].position.z = ghostsData[i].z;
+                ghosts[i].position.x = gData[i].x;
+                ghosts[i].position.z = gData[i].z;
             }
         }
     }
 });
-
 socket.on('itemRemoved', ({ type, index }) => {
     if (type === 'pellet') {
         const p = pellets.find(pel => pel.userData.index === index);
-        if(p && p.visible) {
-            scene.remove(p); p.visible = false;
-            currentState.score += 10; updateScoreUI();
-        }
+        if(p && p.visible) { scene.remove(p); p.visible = false; currentState.score += 10; updateScoreUI(); }
     } else if (type === 'crucifix') {
         const c = crucifixes.find(cru => cru.userData.index === index);
-        if(c && c.visible) {
-            scene.remove(c); c.visible = false;
-        }
+        if(c && c.visible) { scene.remove(c); c.visible = false; }
     }
 });
-
-socket.on('powerModeActivated', () => { activatePowerModeVisuals(); });
-
+socket.on('powerModeActivated', activatePowerModeVisuals);
 socket.on('ghostDied', ({ ghostId }) => {
     if (ghosts[ghostId] && ghosts[ghostId].visible) {
         spawnDeathParticles(ghosts[ghostId].position.x, ghosts[ghostId].position.z);
@@ -249,41 +189,27 @@ socket.on('ghostDied', ({ ghostId }) => {
         ghosts[ghostId].visible = false; 
     }
 });
-
 socket.on('startNextLevel', ({ level }) => {
     currentState.level = level;
     startLevel();
 });
 
-
-// --- GAME ENGINE ---
+// --- GAME CONFIG & ASSETS ---
 const CONFIG = {
-    moveSpeed: 0.15,
-    baseGhostSpeed: 0.025,
-    maxGhostSpeed: 0.12,
+    moveSpeed: 0.2, // Etwas schneller
+    baseGhostSpeed: 0.03,
+    maxGhostSpeed: 0.15,
     powerModeDuration: 8000,
     wallSize: 4,
     playerRadius: 0.8,
-    cameraHeight: 14,
-    cameraDistance: 11,
-    minimapZoom: 75 
+    cameraHeight: 25,  // Höher!
+    cameraDistance: 18, // Weiter weg!
+    minimapZoom: 100 // Größerer Zoom-Out!
 };
 
-// Maps (10 Layouts)
+// Maps (10 Layouts) - Verkürzte Schreibweise für Übersicht
 const MAPS = [
-    [
-        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-        [1,8,0,0,0,0,1,0,0,0,0,0,8,0,1],
-        [1,0,1,1,1,0,1,0,1,1,1,1,1,0,1],
-        [1,0,1,0,0,0,0,0,0,0,0,0,1,0,1],
-        [1,0,1,0,1,1,0,1,1,1,1,0,1,0,1],
-        [1,0,0,0,0,0,9,0,0,0,0,0,0,0,1],
-        [1,0,1,0,1,1,1,1,1,0,1,1,1,0,1],
-        [1,0,1,0,0,0,1,0,0,0,1,0,0,0,1],
-        [1,0,1,1,1,0,1,0,1,0,1,0,1,1,1],
-        [1,8,0,0,0,0,0,0,1,0,0,0,0,8,1],
-        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-    ],
+    [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,0,0,0,1,0,0,0,0,0,8,0,1],[1,0,1,1,1,0,1,0,1,1,1,1,1,0,1],[1,0,1,0,0,0,0,0,0,0,0,0,1,0,1],[1,0,1,0,1,1,0,1,1,1,1,0,1,0,1],[1,0,0,0,0,0,9,0,0,0,0,0,0,0,1],[1,0,1,0,1,1,1,1,1,0,1,1,1,0,1],[1,0,1,0,0,0,1,0,0,0,1,0,0,0,1],[1,0,1,1,1,0,1,0,1,0,1,0,1,1,1],[1,8,0,0,0,0,0,0,1,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
     [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,0,0,1,1,1,1,1,0,0,0,8,1],[1,0,1,1,0,0,0,0,0,0,0,1,1,0,1],[1,0,1,0,0,1,0,1,0,1,0,0,1,0,1],[1,0,0,0,1,0,0,9,0,0,1,0,0,0,1],[1,0,1,0,0,0,0,1,0,0,0,0,1,0,1],[1,0,1,1,0,1,0,1,0,1,0,1,1,0,1],[1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[1,1,0,1,1,1,0,1,0,1,1,1,0,1,1],[1,8,0,0,0,0,0,1,0,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
     [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,1,0,0,0,1,0,0,0,1,0,8,1],[1,0,0,1,0,1,0,1,0,1,0,1,0,0,1],[1,0,0,1,0,1,0,0,0,1,0,1,0,0,1],[1,0,0,0,0,1,1,0,1,1,0,0,0,0,1],[1,1,1,1,0,0,0,9,0,0,0,1,1,1,1],[1,0,0,0,0,1,1,0,1,1,0,0,0,0,1],[1,0,0,1,0,1,0,0,0,1,0,1,0,0,1],[1,0,0,1,0,1,0,1,0,1,0,1,0,0,1],[1,8,0,1,0,0,0,1,0,0,0,1,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
     [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,0,0,0,0,1,0,0,0,0,0,8,1],[1,1,1,1,1,1,0,1,0,1,1,1,1,1,1],[1,0,0,0,0,0,0,1,0,0,0,0,0,0,1],[1,0,1,1,1,1,0,0,0,1,1,1,1,0,1],[1,0,1,9,0,0,0,1,0,0,0,0,1,0,1],[1,0,1,1,1,1,0,0,0,1,1,1,1,0,1],[1,0,0,0,0,0,0,1,0,0,0,0,0,0,1],[1,1,1,1,1,1,0,1,0,1,1,1,1,1,1],[1,8,0,0,0,0,0,1,0,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
@@ -308,6 +234,13 @@ let scene, camera, renderer, mapCamera, mapRenderer, mapLight;
 let player, ghosts = [], walls = [], pellets = [], crucifixes = [], particles = [];
 let joystickData = { x: 0, y: 0, active: false };
 let playerParts = { group: null }; 
+let transparentWalls = [];
+
+// Map Dimensionen
+const mapWidth = 15 * CONFIG.wallSize;
+const mapHeight = 11 * CONFIG.wallSize;
+const centerX = mapWidth / 2 - CONFIG.wallSize / 2;
+const centerZ = mapHeight / 2 - CONFIG.wallSize / 2;
 
 function initGame() {
     scene = new THREE.Scene();
@@ -327,7 +260,7 @@ function initGame() {
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.4);
     dirLight.position.set(50, 100, 50); dirLight.castShadow = true; scene.add(dirLight);
 
-    cameraRaycaster = new THREE.Raycaster(); // Init Raycaster
+    cameraRaycaster = new THREE.Raycaster();
 
     setupJoystick();
     window.addEventListener('resize', onWindowResize, false);
@@ -337,12 +270,14 @@ function initGame() {
 }
 
 function setupMinimap() {
-    const frustumSize = CONFIG.minimapZoom;
-    mapCamera = new THREE.OrthographicCamera(frustumSize * 1.33 / -2, frustumSize * 1.33 / 2, frustumSize / 2, frustumSize / -2, 1, 100);
-    mapCamera.position.set(30, 50, 22); mapCamera.lookAt(30, 0, 22);
+    const frustumSize = CONFIG.minimapZoom; // 100
+    mapCamera = new THREE.OrthographicCamera(frustumSize / -2, frustumSize / 2, frustumSize / 2, frustumSize / -2, 1, 100);
+    mapCamera.position.set(centerX, 50, centerZ); 
+    mapCamera.lookAt(centerX, 0, centerZ);
+    mapCamera.rotation.z = 0; 
     
     mapRenderer = new THREE.WebGLRenderer({ antialias: false });
-    mapRenderer.setSize(200, 150);
+    mapRenderer.setSize(180, 140);
     document.getElementById('minimap-container').appendChild(mapRenderer.domElement);
     mapLight = new THREE.AmbientLight(0xffffff, 3.0); 
 }
@@ -356,8 +291,7 @@ function createBrickTexture() {
     ctx.fillRect(2, 2, 28, 28); ctx.fillRect(34, 2, 28, 28);
     ctx.fillRect(2, 34, 28, 28); ctx.fillRect(34, 34, 28, 28);
     const texture = new THREE.CanvasTexture(canvas);
-    texture.magFilter = THREE.NearestFilter;
-    return texture;
+    texture.magFilter = THREE.NearestFilter; return texture;
 }
 
 function createFloorTexture() {
@@ -368,8 +302,7 @@ function createFloorTexture() {
     ctx.fillStyle = '#181818'; ctx.fillRect(0, 0, 32, 32); ctx.fillRect(32, 32, 32, 32);
     const texture = new THREE.CanvasTexture(canvas);
     texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(10, 10);
-    return texture;
+    texture.repeat.set(10, 10); return texture;
 }
 
 function startLevel() {
@@ -380,7 +313,7 @@ function startLevel() {
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.4);
     dirLight.position.set(50, 100, 50); dirLight.castShadow = true; scene.add(dirLight);
 
-    document.getElementById('level-text').innerText = "Level: " + currentState.level;
+    document.getElementById('level-text').innerText = "LEVEL: " + currentState.level;
     
     const mapLayout = MAPS[(currentState.level - 1) % MAPS.length];
     createLevelGeometry(mapLayout);
@@ -408,7 +341,6 @@ function createCharacterMesh(charData) {
     head.position.y = 1.75; head.castShadow = true;
     group.add(head);
 
-    // Frisur
     if (charData.type === 'female_pony') {
         const hairTop = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.15, 0.42), hairMat);
         hairTop.position.y = 1.95; group.add(hairTop);
@@ -456,22 +388,18 @@ function spawnDeathParticles(x, z) {
 }
 
 function createLevelGeometry(layout) {
-    // BODEN (y=0)
+    // Floor bei y=0
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ map: createFloorTexture() }));
     floor.rotation.x = -Math.PI/2;
     scene.add(floor);
 
-    // SPIELER (y=0)
+    // Player steht auf y=0
     player = createCharacterMesh(CHARACTERS[selectedCharKey]);
     playerParts.group = player; 
     scene.add(player);
     
-    // MATERIAL FÜR WÄNDE (Transparent!)
     const wallMat = new THREE.MeshStandardMaterial({ 
-        map: createBrickTexture(), 
-        color: 0x888888, 
-        transparent: true, 
-        opacity: 1.0 
+        map: createBrickTexture(), color: 0x888888, transparent: true, opacity: 1.0 
     });
 
     let pelletIndex = 0;
@@ -480,20 +408,19 @@ function createLevelGeometry(layout) {
             const t = layout[z][x];
             const px = x*CONFIG.wallSize, pz = z*CONFIG.wallSize;
             if(t===1) {
-                // WÄNDE (y=3, damit Basis bei 0)
+                // Wände bei y=3 (Höhe 6) -> Stehen auf Boden
                 const w = new THREE.Mesh(new THREE.BoxGeometry(4,6,4), wallMat.clone());
                 w.position.set(px,3,pz);
                 w.castShadow = true; w.receiveShadow = true;
                 w.userData = { box: new THREE.Box3().setFromObject(w) };
                 scene.add(w); walls.push(w);
             } else if(t===0) {
-                // PUNKTE (y=1, damit erreichbar)
+                // Pellets bei y=1 (erreichbar)
                 const p = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({color:0x00ff00}));
                 p.position.set(px,1,pz);
                 p.userData = { index: pelletIndex++ };
                 scene.add(p); pellets.push(p);
             } else if(t===8) {
-                // KREUZE (y=1)
                  const group = new THREE.Group();
                 const m = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xaa8800 });
                 group.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.8, 0.2), m));
@@ -507,7 +434,7 @@ function createLevelGeometry(layout) {
         }
     }
 
-    // Geister Placeholders
+    // Ghosts
     for(let i=0; i<4; i++) {
         const gGroup = new THREE.Group();
         const gBody = new THREE.Mesh(new THREE.BoxGeometry(0.6,1.4,0.35), new THREE.MeshStandardMaterial({color:0xeeeeee}));
@@ -517,42 +444,37 @@ function createLevelGeometry(layout) {
         const hair = new THREE.Mesh(new THREE.BoxGeometry(0.52,0.8,0.15), new THREE.MeshStandardMaterial({color:0x000000}));
         hair.position.set(0,1.5,-0.26); gGroup.add(hair);
 
-        gGroup.position.set(0,-20,0);
+        // Startposition direkt aus Map lesen (einfachheit halber Ecken)
+        const spawns = [{x:1,z:1}, {x:13,z:1}, {x:1,z:9}, {x:13,z:9}];
+        const sp = spawns[i];
+        gGroup.position.set(sp.x*CONFIG.wallSize, 0, sp.z*CONFIG.wallSize); // Auf Bodenhöhe
         scene.add(gGroup);
         ghosts.push(gGroup);
     }
 }
 
-// --- UPDATE LOOPS ---
-
 function updateScoreUI() {
-    document.getElementById('score-text').innerText = "Punkte: " + currentState.score;
+    document.getElementById('score-text').innerText = "SCORE: " + currentState.score;
 }
 
 function activatePowerModeVisuals() {
     const msg = document.getElementById('status-message');
     msg.innerHTML = "KRUZIFIX AKTIV!<br>TOAST THE GHOST!";
     msg.style.display = 'block';
-    
-    ghosts.forEach(g => {
-        g.traverse(c => { if(c.name==="ghostPart") c.material.color.setHex(0x3333ff); });
-    });
-
+    ghosts.forEach(g => { g.traverse(c => { if(c.name==="ghostPart") c.material.color.setHex(0x3333ff); }); });
     setTimeout(() => { 
         msg.style.display = 'none'; 
-        ghosts.forEach(g => {
-            g.traverse(c => { 
-                if(c.name==="ghostPart") {
-                    if(c.geometry.type.includes("Box") && c.position.y < 1) c.material.color.setHex(0xeeeeee);
-                    else c.material.color.setHex(0xd0d0d0);
-                } 
-            });
-        });
+        ghosts.forEach(g => { g.traverse(c => { 
+            if(c.name==="ghostPart") {
+                if(c.geometry.type.includes("Box") && c.position.y < 1) c.material.color.setHex(0xeeeeee);
+                else c.material.color.setHex(0xd0d0d0);
+            } 
+        });});
     }, CONFIG.powerModeDuration);
 }
 
 function updateGameLogic() {
-    // 1. Player
+    // 1. Player Move
     if (joystickData.active) {
         const speed = CONFIG.moveSpeed;
         const tx = player.position.x + joystickData.x * speed;
@@ -565,12 +487,12 @@ function updateGameLogic() {
         socket.emit('playerMove', { room: myRoomId, x: player.position.x, z: player.position.z, rotation: player.rotation.y });
     }
 
-    // 2. Remote Players
+    // 2. Remote
     for(const id in remotePlayers) {
         const rp = remotePlayers[id];
         if(rp.targetPos) {
-            rp.mesh.position.x += (rp.targetPos.x - rp.mesh.position.x) * 0.2;
-            rp.mesh.position.z += (rp.targetPos.z - rp.mesh.position.z) * 0.2;
+            rp.mesh.position.x += (rp.targetPos.x - rp.mesh.position.x) * 0.3;
+            rp.mesh.position.z += (rp.targetPos.z - rp.mesh.position.z) * 0.3;
             rp.mesh.rotation.y = rp.targetPos.rot;
             
             const vec = rp.mesh.position.clone(); vec.y += 2.5; vec.project(camera);
@@ -582,25 +504,33 @@ function updateGameLogic() {
         }
     }
 
-    // 3. Items (mit toleranterem Abstands-Check)
+    // 3. Items (mit Höhen-Ignoranz)
+    // Wir prüfen nur x/z Distanz
     pellets.forEach(p => {
-        if(p.visible && player.position.distanceTo(p.position) < 1.5) {
-            p.visible = false; socket.emit('itemCollected', { room: myRoomId, type: 'pellet', index: p.userData.index });
+        if(p.visible) {
+            const dx = player.position.x - p.position.x;
+            const dz = player.position.z - p.position.z;
+            if (Math.sqrt(dx*dx + dz*dz) < 1.2) {
+                p.visible = false; socket.emit('itemCollected', { room: myRoomId, type: 'pellet', index: p.userData.index });
+            }
         }
     });
     crucifixes.forEach(c => {
-         if(c.visible && player.position.distanceTo(c.position) < 2.0) {
-            c.visible = false; socket.emit('itemCollected', { room: myRoomId, type: 'crucifix', index: c.userData.index });
-        }
+         if(c.visible) {
+            const dx = player.position.x - c.position.x;
+            const dz = player.position.z - c.position.z;
+            if (Math.sqrt(dx*dx + dz*dz) < 1.5) {
+                c.visible = false; socket.emit('itemCollected', { room: myRoomId, type: 'crucifix', index: c.userData.index });
+            }
+         }
     });
 
-    // 4. Host Logic
+    // 4. Host Ghost Logic
     if (isHost && ghosts.length > 0) {
         const ghostUpdates = [];
         ghosts.forEach((g, i) => {
             if(!g.visible) return;
-            let target = player.position; 
-            const dir = new THREE.Vector3().subVectors(target, g.position).normalize();
+            const dir = new THREE.Vector3().subVectors(player.position, g.position).normalize();
             const speed = CONFIG.baseGhostSpeed * 0.5; 
             let nx = g.position.x + dir.x * speed;
             let nz = g.position.z + dir.z * speed;
@@ -622,9 +552,7 @@ function updateGameLogic() {
     if(isHost) {
         let itemsLeft = pellets.some(p => p.visible) || crucifixes.some(c => c.visible);
         let ghostsLeft = ghosts.some(g => g.visible);
-        if(!itemsLeft && !ghostsLeft) {
-             socket.emit('levelFinished', { room: myRoomId });
-        }
+        if(!itemsLeft && !ghostsLeft) socket.emit('levelFinished', { room: myRoomId });
     }
 
     for(let i = particles.length -1; i>=0; i--) {
@@ -638,20 +566,25 @@ function updateGameLogic() {
 }
 
 function updateCamera() {
-    camera.position.x += (player.position.x - camera.position.x) * 0.1;
-    camera.position.z += (player.position.z + 11 - camera.position.z) * 0.1;
-    camera.lookAt(player.position);
+    // Kamera Offset
+    const targetX = player.position.x;
+    const targetZ = player.position.z + CONFIG.cameraDistance; // Z + 18
+    
+    camera.position.x += (targetX - camera.position.x) * 0.1;
+    camera.position.z += (targetZ - camera.position.z) * 0.1;
+    camera.position.y = CONFIG.cameraHeight; // Y = 25
+    camera.lookAt(player.position.x, player.position.y + 1, player.position.z); // Look slightly above player
 
-    // Wand Transparenz Logic
-    transparentWalls.forEach(w => w.material.opacity = 1.0);
+    // Transparenz
+    transparentWalls.forEach(w => { w.material.opacity = 1.0; w.material.transparent = true; });
     transparentWalls = [];
     const dir = new THREE.Vector3().subVectors(player.position, camera.position).normalize();
     cameraRaycaster.set(camera.position, dir);
     const hits = cameraRaycaster.intersectObjects(walls);
     const dist = player.position.distanceTo(camera.position);
     for(let hit of hits) {
-        if(hit.distance < dist - 1.5) { // Kleiner Puffer damit Wand hinter Spieler nicht verschwindet
-            hit.object.material.opacity = 0.25;
+        if(hit.distance < dist - 2) {
+            hit.object.material.opacity = 0.2;
             transparentWalls.push(hit.object);
         }
     }
