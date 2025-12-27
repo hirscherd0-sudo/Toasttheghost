@@ -135,9 +135,8 @@ let myRoomId = null;
 let selectedCharKey = 'ramona';
 let isHost = false; 
 let amIDead = false;
-let isPowerMode = false;
-let powerModeTimeout = null;
-let levelEnding = false; // NEU: Client Sperre
+let isPowerMode = false; // Wird vom Server diktiert
+let levelEnding = false;
 
 const remotePlayers = {}; 
 
@@ -161,13 +160,6 @@ function joinGame() {
 
 // --- NETWORK HANDLERS ---
 socket.on('currentRoomState', (roomState) => {
-    // Clean existing
-    for (const id in remotePlayers) {
-        if(remotePlayers[id].mesh) scene.remove(remotePlayers[id].mesh);
-        if(remotePlayers[id].label) remotePlayers[id].label.remove();
-        delete remotePlayers[id];
-    }
-    
     for (const id in roomState.players) {
         if (id !== socket.id) spawnRemotePlayer(id, roomState.players[id]);
     }
@@ -179,10 +171,15 @@ socket.on('currentRoomState', (roomState) => {
         const c = crucifixes.find(cru => cru.userData.index === idx);
         if(c) { scene.remove(c); c.visible = false; }
     });
+    
+    // Server State sync
     currentState.score = roomState.score;
-    updateScoreUI();
     currentState.level = roomState.level;
+    isPowerMode = roomState.powerModeActive;
+    
+    updateScoreUI();
     document.getElementById('level-text').innerText = "LEVEL: " + currentState.level;
+    if(isPowerMode) activatePowerModeVisuals(true);
 
     if (roomState.hostId === socket.id) isHost = true;
 });
@@ -223,7 +220,10 @@ socket.on('itemRemoved', ({ type, index, newScore }) => {
     }
 });
 
-socket.on('powerModeActivated', activatePowerModeVisuals);
+socket.on('powerModeChanged', ({ active }) => {
+    isPowerMode = active;
+    activatePowerModeVisuals(active);
+});
 
 socket.on('ghostDied', ({ ghostId, newScore }) => {
     currentState.score = newScore;
@@ -261,13 +261,10 @@ socket.on('startNextLevel', ({ level }) => {
     // Reset States
     amIDead = false;
     isPowerMode = false;
-    levelEnding = false; // Sperre aufheben
-    
+    levelEnding = false;
     document.getElementById('death-screen').style.display = 'none';
     document.getElementById('joystick-zone').style.display = 'block';
-    
     if(player) player.visible = true;
-    
     for(let id in remotePlayers) {
         remotePlayers[id].mesh.visible = true;
         let lbl = remotePlayers[id].label;
@@ -290,7 +287,7 @@ const CONFIG = {
     minimapZoom: 75 
 };
 
-// Maps (Gleiche wie V11)
+// Maps (Gleiche wie vorher)
 const MAPS = [
     [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,0,0,0,1,0,0,0,0,0,8,0,1],[1,0,1,1,1,0,1,0,1,1,1,1,1,0,1],[1,0,1,0,0,0,0,0,0,0,0,0,1,0,1],[1,0,1,0,1,1,0,1,1,1,1,0,1,0,1],[1,0,0,0,0,0,9,0,0,0,0,0,0,0,1],[1,0,1,0,1,1,1,1,1,0,1,1,1,0,1],[1,0,1,0,0,0,1,0,0,0,1,0,0,0,1],[1,0,1,1,1,0,1,0,1,0,1,0,1,1,1],[1,8,0,0,0,0,0,0,1,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
     [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,0,0,1,1,1,1,1,0,0,0,8,1],[1,0,1,1,0,0,0,0,0,0,0,1,1,0,1],[1,0,1,0,0,1,0,1,0,1,0,0,1,0,1],[1,0,0,0,1,0,0,9,0,0,1,0,0,0,1],[1,0,1,0,0,0,0,1,0,0,0,0,1,0,1],[1,0,1,1,0,1,0,1,0,1,0,1,1,0,1],[1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[1,1,0,1,1,1,0,1,0,1,1,1,0,1,1],[1,8,0,0,0,0,0,1,0,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
@@ -534,18 +531,15 @@ function updateScoreUI() {
     document.getElementById('score-text').innerText = "SCORE: " + currentState.score;
 }
 
-function activatePowerModeVisuals() {
+function activatePowerModeVisuals(active) {
     const msg = document.getElementById('status-message');
-    msg.innerHTML = "KRUZIFIX AKTIV!<br>TOAST THE GHOST!";
-    msg.style.display = 'block';
-    
-    ghosts.forEach(g => {
-        g.traverse(c => { if(c.name==="ghostPart") c.material.color.setHex(0x3333ff); });
-    });
-
-    if(powerModeTimeout) clearTimeout(powerModeTimeout);
-    powerModeTimeout = setTimeout(() => { 
-        isPowerMode = false;
+    if (active) {
+        msg.innerHTML = "KRUZIFIX AKTIV!<br>TOAST THE GHOST!";
+        msg.style.display = 'block';
+        ghosts.forEach(g => {
+            g.traverse(c => { if(c.name==="ghostPart") c.material.color.setHex(0x3333ff); });
+        });
+    } else {
         msg.style.display = 'none'; 
         ghosts.forEach(g => {
             g.traverse(c => { 
@@ -555,7 +549,7 @@ function activatePowerModeVisuals() {
                 } 
             });
         });
-    }, CONFIG.powerModeDuration);
+    }
 }
 
 function updateGameLogic() {
@@ -631,6 +625,7 @@ function updateGameLogic() {
 
             ghostUpdates.push({ x: g.position.x, z: g.position.z, index: i });
             
+            // USE GLOBAL isPowerMode HERE
             if (!amIDead && g.position.distanceTo(player.position) < 1.5) {
                  if(isPowerMode) {
                      socket.emit('ghostEliminated', { room: myRoomId, ghostId: i });
@@ -653,10 +648,10 @@ function updateGameLogic() {
         socket.emit('ghostsUpdate', { room: myRoomId, ghostsData: ghostUpdates });
     }
     
-    if(isHost && !levelEnding) { // LEVEL ENDING FLAG
+    if(isHost && !levelEnding) { 
         let itemsLeft = pellets.some(p => p.visible) || crucifixes.some(c => c.visible);
         if(!itemsLeft) {
-            levelEnding = true; // Sperre setzen
+            levelEnding = true;
             socket.emit('levelFinished', { room: myRoomId });
         }
     }
