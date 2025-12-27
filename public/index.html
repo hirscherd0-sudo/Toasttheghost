@@ -309,7 +309,6 @@ let player, ghosts = [], walls = [], pellets = [], crucifixes = [], particles = 
 let joystickData = { x: 0, y: 0, active: false };
 let playerParts = { group: null }; 
 
-// Init ThreeJS
 function initGame() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x050505);
@@ -327,6 +326,8 @@ function initGame() {
     scene.add(new THREE.AmbientLight(0x202020));
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.4);
     dirLight.position.set(50, 100, 50); dirLight.castShadow = true; scene.add(dirLight);
+
+    cameraRaycaster = new THREE.Raycaster(); // Init Raycaster
 
     setupJoystick();
     window.addEventListener('resize', onWindowResize, false);
@@ -346,9 +347,34 @@ function setupMinimap() {
     mapLight = new THREE.AmbientLight(0xffffff, 3.0); 
 }
 
+function createBrickTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#222'; ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(2, 2, 28, 28); ctx.fillRect(34, 2, 28, 28);
+    ctx.fillRect(2, 34, 28, 28); ctx.fillRect(34, 34, 28, 28);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.magFilter = THREE.NearestFilter;
+    return texture;
+}
+
+function createFloorTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#111'; ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = '#181818'; ctx.fillRect(0, 0, 32, 32); ctx.fillRect(32, 32, 32, 32);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(10, 10);
+    return texture;
+}
+
 function startLevel() {
     while(scene.children.length > 0){ scene.remove(scene.children[0]); }
-    ghosts = []; walls = []; pellets = []; crucifixes = []; particles = [];
+    ghosts = []; walls = []; pellets = []; crucifixes = []; particles = []; transparentWalls = [];
     
     scene.add(new THREE.AmbientLight(0x202020));
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.4);
@@ -430,36 +456,50 @@ function spawnDeathParticles(x, z) {
 }
 
 function createLevelGeometry(layout) {
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({color:0x111111}));
+    // BODEN (y=0)
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ map: createFloorTexture() }));
     floor.rotation.x = -Math.PI/2;
     scene.add(floor);
 
+    // SPIELER (y=0)
     player = createCharacterMesh(CHARACTERS[selectedCharKey]);
     playerParts.group = player; 
     scene.add(player);
     
+    // MATERIAL FÜR WÄNDE (Transparent!)
+    const wallMat = new THREE.MeshStandardMaterial({ 
+        map: createBrickTexture(), 
+        color: 0x888888, 
+        transparent: true, 
+        opacity: 1.0 
+    });
+
     let pelletIndex = 0;
     for(let z=0; z<layout.length; z++){
         for(let x=0; x<layout[z].length; x++){
             const t = layout[z][x];
             const px = x*CONFIG.wallSize, pz = z*CONFIG.wallSize;
             if(t===1) {
-                const w = new THREE.Mesh(new THREE.BoxGeometry(4,6,4), new THREE.MeshStandardMaterial({color:0x888888}));
-                w.position.set(px,0,pz);
+                // WÄNDE (y=3, damit Basis bei 0)
+                const w = new THREE.Mesh(new THREE.BoxGeometry(4,6,4), wallMat.clone());
+                w.position.set(px,3,pz);
+                w.castShadow = true; w.receiveShadow = true;
                 w.userData = { box: new THREE.Box3().setFromObject(w) };
                 scene.add(w); walls.push(w);
             } else if(t===0) {
+                // PUNKTE (y=1, damit erreichbar)
                 const p = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({color:0x00ff00}));
-                p.position.set(px,-1,pz);
+                p.position.set(px,1,pz);
                 p.userData = { index: pelletIndex++ };
                 scene.add(p); pellets.push(p);
             } else if(t===8) {
+                // KREUZE (y=1)
                  const group = new THREE.Group();
                 const m = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xaa8800 });
                 group.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.8, 0.2), m));
                 const h = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.4, 0.2), m); h.position.y=0.3; group.add(h);
-                group.position.set(px,0,pz);
-                group.userData = { index: pelletIndex++ }; // Share index pool
+                group.position.set(px,1,pz);
+                group.userData = { index: pelletIndex++ }; 
                 scene.add(group); crucifixes.push(group);
             } else if(t===9) {
                 player.position.set(px,0,pz);
@@ -474,7 +514,6 @@ function createLevelGeometry(layout) {
         gBody.position.y=0.7; gBody.name="ghostPart"; gGroup.add(gBody);
         const gHead = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5), new THREE.MeshStandardMaterial({color:0xd0d0d0}));
         gHead.position.y=1.65; gHead.name="ghostPart"; gGroup.add(gHead);
-        // Hair
         const hair = new THREE.Mesh(new THREE.BoxGeometry(0.52,0.8,0.15), new THREE.MeshStandardMaterial({color:0x000000}));
         hair.position.set(0,1.5,-0.26); gGroup.add(hair);
 
@@ -504,7 +543,6 @@ function activatePowerModeVisuals() {
         ghosts.forEach(g => {
             g.traverse(c => { 
                 if(c.name==="ghostPart") {
-                    // Reset to white/grey
                     if(c.geometry.type.includes("Box") && c.position.y < 1) c.material.color.setHex(0xeeeeee);
                     else c.material.color.setHex(0xd0d0d0);
                 } 
@@ -544,14 +582,14 @@ function updateGameLogic() {
         }
     }
 
-    // 3. Items
+    // 3. Items (mit toleranterem Abstands-Check)
     pellets.forEach(p => {
-        if(p.visible && player.position.distanceTo(p.position) < 1.0) {
+        if(p.visible && player.position.distanceTo(p.position) < 1.5) {
             p.visible = false; socket.emit('itemCollected', { room: myRoomId, type: 'pellet', index: p.userData.index });
         }
     });
     crucifixes.forEach(c => {
-         if(c.visible && player.position.distanceTo(c.position) < 1.5) {
+         if(c.visible && player.position.distanceTo(c.position) < 2.0) {
             c.visible = false; socket.emit('itemCollected', { room: myRoomId, type: 'crucifix', index: c.userData.index });
         }
     });
@@ -559,43 +597,28 @@ function updateGameLogic() {
     // 4. Host Logic
     if (isHost && ghosts.length > 0) {
         const ghostUpdates = [];
-        const layout = MAPS[(currentState.level-1)%MAPS.length];
-        
         ghosts.forEach((g, i) => {
             if(!g.visible) return;
-            // Simple Move towards nearest player
             let target = player.position; 
-            // Hier würde man eigentlich durch alle Players iterieren um den nächsten zu finden
-            
             const dir = new THREE.Vector3().subVectors(target, g.position).normalize();
-            const speed = CONFIG.baseGhostSpeed * 0.5; // Langsamer als Spieler
-            
+            const speed = CONFIG.baseGhostSpeed * 0.5; 
             let nx = g.position.x + dir.x * speed;
             let nz = g.position.z + dir.z * speed;
-            
-            // Wall Check for Ghost
-            // (Vereinfacht: Geist gleitet an Wänden)
             if(!checkWall(nx, g.position.z)) g.position.x = nx;
             if(!checkWall(g.position.x, nz)) g.position.z = nz;
 
             ghostUpdates.push({ x: g.position.x, z: g.position.z, index: i });
             
-            // Check Collision with players
-             if(g.position.distanceTo(player.position) < 1.0) {
-                 // Check if Power Mode -> Ghost Dies
+             if(g.position.distanceTo(player.position) < 1.5) {
                  const msg = document.getElementById('status-message');
                  if(msg.style.display === 'block') {
-                     // Hacky check for power mode via UI state to simplify
                      socket.emit('ghostEliminated', { room: myRoomId, ghostId: i });
                  }
-                 // Else Player Dies logic handled locally or by server?
-                 // For now multiplayer permadeath is tricky, lets just ignore death or respawn player
              }
         });
         socket.emit('ghostsUpdate', { room: myRoomId, ghostsData: ghostUpdates });
     }
     
-    // Check Level End (Host only really needs to trigger, but clients can check visual state)
     if(isHost) {
         let itemsLeft = pellets.some(p => p.visible) || crucifixes.some(c => c.visible);
         let ghostsLeft = ghosts.some(g => g.visible);
@@ -604,7 +627,6 @@ function updateGameLogic() {
         }
     }
 
-    // Particles
     for(let i = particles.length -1; i>=0; i--) {
         const p = particles[i];
         p.position.add(new THREE.Vector3(p.userData.vx, p.userData.vy, p.userData.vz));
@@ -612,9 +634,27 @@ function updateGameLogic() {
         if(p.userData.life <= 0) { scene.remove(p); particles.splice(i, 1); }
     }
 
+    updateCamera();
+}
+
+function updateCamera() {
     camera.position.x += (player.position.x - camera.position.x) * 0.1;
     camera.position.z += (player.position.z + 11 - camera.position.z) * 0.1;
     camera.lookAt(player.position);
+
+    // Wand Transparenz Logic
+    transparentWalls.forEach(w => w.material.opacity = 1.0);
+    transparentWalls = [];
+    const dir = new THREE.Vector3().subVectors(player.position, camera.position).normalize();
+    cameraRaycaster.set(camera.position, dir);
+    const hits = cameraRaycaster.intersectObjects(walls);
+    const dist = player.position.distanceTo(camera.position);
+    for(let hit of hits) {
+        if(hit.distance < dist - 1.5) { // Kleiner Puffer damit Wand hinter Spieler nicht verschwindet
+            hit.object.material.opacity = 0.25;
+            transparentWalls.push(hit.object);
+        }
+    }
 }
 
 function checkWall(x, z) {
