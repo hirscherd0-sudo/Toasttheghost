@@ -56,7 +56,7 @@
         /* --- SCREENS --- */
         #death-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(50, 0, 0, 0.4); /* Roter Schleier */
+            background: rgba(50, 0, 0, 0.4);
             display: none; justify-content: center; align-items: center; z-index: 15;
             flex-direction: column; pointer-events: none;
         }
@@ -71,7 +71,6 @@
             justify-content: center; align-items: center; flex-direction: column; pointer-events: auto;
         }
 
-        /* --- JOYSTICK --- */
         #joystick-zone {
             position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px;
             background: rgba(255, 255, 255, 0.15); border-radius: 50%;
@@ -119,12 +118,10 @@
         <div id="status-message"></div>
     </div>
     
-    <!-- Wenn man tot ist -->
     <div id="death-screen">
         <div class="death-text">DU BIST RAUS!<br><span style="font-size: 20px; color: white;">Warte auf das nächste Level...</span></div>
     </div>
 
-    <!-- Wenn alle tot sind -->
     <div id="game-over-screen">
         <h1 style="color:red; font-size: 50px;">GAME OVER</h1>
         <h2 style="color:white;" id="final-score-text"></h2>
@@ -142,7 +139,7 @@ const socket = io();
 let myRoomId = null;
 let selectedCharKey = 'ramona';
 let isHost = false; 
-let amIDead = false; // Lokaler Status
+let amIDead = false;
 
 const remotePlayers = {}; 
 
@@ -166,11 +163,9 @@ function joinGame() {
 
 // --- NETWORK HANDLERS ---
 socket.on('currentRoomState', (roomState) => {
-    // Vorhandene Spieler laden
     for (const id in roomState.players) {
         if (id !== socket.id) spawnRemotePlayer(id, roomState.players[id]);
     }
-    // Items aufräumen
     roomState.pelletsRemoved.forEach(idx => {
         const p = pellets.find(pel => pel.userData.index === idx);
         if(p) { scene.remove(p); p.visible = false; }
@@ -240,15 +235,13 @@ socket.on('ghostDied', ({ ghostId, newScore }) => {
 
 socket.on('playerDied', ({ playerId }) => {
     if (playerId === socket.id) {
-        // ICH bin gestorben
         amIDead = true;
-        player.visible = false; // Mich selbst verstecken
+        player.visible = false; 
         document.getElementById('death-screen').style.display = 'flex';
-        document.getElementById('joystick-zone').style.display = 'none'; // Keine Steuerung mehr
+        document.getElementById('joystick-zone').style.display = 'none';
     } else {
-        // Jemand anderes ist gestorben
         if (remotePlayers[playerId]) {
-            remotePlayers[playerId].mesh.visible = false; // Mesh ausblenden
+            remotePlayers[playerId].mesh.visible = false; 
             if(remotePlayers[playerId].label) remotePlayers[playerId].label.style.color = "red";
             if(remotePlayers[playerId].label) remotePlayers[playerId].label.innerText += " (TOT)";
         }
@@ -263,19 +256,15 @@ socket.on('gameOver', ({ finalScore }) => {
 
 socket.on('startNextLevel', ({ level }) => {
     currentState.level = level;
-    // Reset Death State
     amIDead = false;
     document.getElementById('death-screen').style.display = 'none';
     document.getElementById('joystick-zone').style.display = 'block';
     if(player) player.visible = true;
-    
-    // Reset Remote Players Vis
     for(let id in remotePlayers) {
         remotePlayers[id].mesh.visible = true;
         let lbl = remotePlayers[id].label;
         if(lbl) { lbl.style.color = "white"; lbl.innerText = remotePlayers[id].data.username; }
     }
-
     startLevel();
 });
 
@@ -283,17 +272,18 @@ socket.on('startNextLevel', ({ level }) => {
 // --- GAME CONFIG & ASSETS ---
 const CONFIG = {
     moveSpeed: 0.2,
-    baseGhostSpeed: 0.035, // Etwas schneller
+    baseGhostSpeed: 0.035,
     maxGhostSpeed: 0.16,
     powerModeDuration: 8000,
     wallSize: 4,
     playerRadius: 0.8,
-    cameraHeight: 25,
-    cameraDistance: 18,
-    minimapZoom: 100 
+    // --- KAMERA FIX ---
+    cameraHeight: 14, // Wieder tiefer (war 25)
+    cameraDistance: 11, // Wieder näher (war 18)
+    minimapZoom: 75 
 };
 
-// Maps (Gleiche wie V11, hier komprimiert)
+// Maps (Gleiche wie V11)
 const MAPS = [
     [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,0,0,0,1,0,0,0,0,0,8,0,1],[1,0,1,1,1,0,1,0,1,1,1,1,1,0,1],[1,0,1,0,0,0,0,0,0,0,0,0,1,0,1],[1,0,1,0,1,1,0,1,1,1,1,0,1,0,1],[1,0,0,0,0,0,9,0,0,0,0,0,0,0,1],[1,0,1,0,1,1,1,1,1,0,1,1,1,0,1],[1,0,1,0,0,0,1,0,0,0,1,0,0,0,1],[1,0,1,1,1,0,1,0,1,0,1,0,1,1,1],[1,8,0,0,0,0,0,0,1,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
     [[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,8,0,0,0,1,1,1,1,1,0,0,0,8,1],[1,0,1,1,0,0,0,0,0,0,0,1,1,0,1],[1,0,1,0,0,1,0,1,0,1,0,0,1,0,1],[1,0,0,0,1,0,0,9,0,0,1,0,0,0,1],[1,0,1,0,0,0,0,1,0,0,0,0,1,0,1],[1,0,1,1,0,1,0,1,0,1,0,1,1,0,1],[1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[1,1,0,1,1,1,0,1,0,1,1,1,0,1,1],[1,8,0,0,0,0,0,1,0,0,0,0,0,8,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
@@ -331,7 +321,7 @@ const centerZ = mapHeight / 2 - CONFIG.wallSize / 2;
 function initGame() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x050505);
-    scene.fog = new THREE.FogExp2(0x050505, 0.02); // Weniger Nebel
+    scene.fog = new THREE.FogExp2(0x050505, 0.02); 
 
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
     
@@ -343,9 +333,9 @@ function initGame() {
 
     setupMinimap();
     
-    // LICHT UPDATE: Viel Heller
-    scene.add(new THREE.AmbientLight(0x909090)); // Hellgrau statt dunkelgrau
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8); // Stärkeres Sonnenlicht
+    // LICHT: Heller!
+    scene.add(new THREE.AmbientLight(0x909090)); // Hellgrau
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
     dirLight.position.set(50, 100, 50); dirLight.castShadow = true; scene.add(dirLight);
 
     cameraRaycaster = new THREE.Raycaster();
@@ -408,7 +398,6 @@ function startLevel() {
 
     for (const id in remotePlayers) {
         const rp = remotePlayers[id];
-        // Remote Spieler nur erstellen wenn nicht tot? Nein, sie werden versteckt durch update logic
         const mesh = createCharacterMesh(CHARACTERS[rp.data.character]);
         mesh.position.set(rp.targetPos?.x || 0, 0, rp.targetPos?.z || 0);
         rp.mesh = mesh;
@@ -430,7 +419,6 @@ function createCharacterMesh(charData) {
     head.position.y = 1.75; head.castShadow = true;
     group.add(head);
 
-    // Frisur
     if (charData.type === 'female_pony') {
         const hairTop = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.15, 0.42), hairMat);
         hairTop.position.y = 1.95; group.add(hairTop);
@@ -446,7 +434,6 @@ function createCharacterMesh(charData) {
         h.position.y=1.98; group.add(h);
     }
     
-    // Kleines Licht für den Spieler selbst
     const l = new THREE.PointLight(0xffaa55, 0.3, 8);
     l.position.set(0, 2, 0.5);
     group.add(l);
@@ -479,19 +466,16 @@ function spawnDeathParticles(x, z) {
 }
 
 function createLevelGeometry(layout) {
-    // BODEN (y=0)
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ map: createFloorTexture() }));
     floor.rotation.x = -Math.PI/2;
     scene.add(floor);
 
-    // SPIELER (y=0)
     player = createCharacterMesh(CHARACTERS[selectedCharKey]);
     playerParts.group = player; 
     scene.add(player);
     
-    // MATERIAL FÜR WÄNDE (Transparent!)
     const wallMat = new THREE.MeshStandardMaterial({ 
-        map: createBrickTexture(), color: 0x999999, transparent: true, opacity: 1.0 
+        map: createBrickTexture(), color: 0x888888, transparent: true, opacity: 1.0 
     });
 
     let pelletIndex = 0;
@@ -500,20 +484,17 @@ function createLevelGeometry(layout) {
             const t = layout[z][x];
             const px = x*CONFIG.wallSize, pz = z*CONFIG.wallSize;
             if(t===1) {
-                // WÄNDE (y=3)
                 const w = new THREE.Mesh(new THREE.BoxGeometry(4,6,4), wallMat.clone());
                 w.position.set(px,3,pz);
                 w.castShadow = true; w.receiveShadow = true;
                 w.userData = { box: new THREE.Box3().setFromObject(w) };
                 scene.add(w); walls.push(w);
             } else if(t===0) {
-                // PUNKTE (y=1)
                 const p = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({color:0x00ff00}));
                 p.position.set(px,1,pz);
                 p.userData = { index: pelletIndex++ };
                 scene.add(p); pellets.push(p);
             } else if(t===8) {
-                // KREUZE (y=1)
                  const group = new THREE.Group();
                 const m = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xaa8800 });
                 group.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 1.8, 0.2), m));
@@ -527,7 +508,15 @@ function createLevelGeometry(layout) {
         }
     }
 
-    // Geister Placeholders
+    // --- GEISTER-FIX: SOFORTIGE SICHTBARKEIT ---
+    // Startpositionen hardcoded für die 4 Ecken, damit sie sofort sichtbar sind
+    const spawnPoints = [
+        {x: 1, z: 1},
+        {x: 13, z: 1},
+        {x: 1, z: 9},
+        {x: 13, z: 9}
+    ];
+
     for(let i=0; i<4; i++) {
         const gGroup = new THREE.Group();
         const gBody = new THREE.Mesh(new THREE.BoxGeometry(0.6,1.4,0.35), new THREE.MeshStandardMaterial({color:0xeeeeee}));
@@ -537,8 +526,10 @@ function createLevelGeometry(layout) {
         const hair = new THREE.Mesh(new THREE.BoxGeometry(0.52,0.8,0.15), new THREE.MeshStandardMaterial({color:0x000000}));
         hair.position.set(0,1.5,-0.26); gGroup.add(hair);
 
-        // Startposition (unter boden bis update)
-        gGroup.position.set(0,-20,0);
+        // Position: X * WallSize
+        let sp = spawnPoints[i % spawnPoints.length];
+        gGroup.position.set(sp.x * CONFIG.wallSize, 0, sp.z * CONFIG.wallSize);
+        
         scene.add(gGroup);
         ghosts.push(gGroup);
     }
@@ -571,7 +562,7 @@ function activatePowerModeVisuals() {
 }
 
 function updateGameLogic() {
-    if (amIDead) return; // Wer tot ist, bewegt sich nicht
+    if (amIDead) return;
 
     // 1. Player
     if (joystickData.active) {
@@ -586,7 +577,7 @@ function updateGameLogic() {
         socket.emit('playerMove', { room: myRoomId, x: player.position.x, z: player.position.z, rotation: player.rotation.y });
     }
 
-    // 2. Remote Players Interpolation
+    // 2. Remote
     for(const id in remotePlayers) {
         const rp = remotePlayers[id];
         if(rp.targetPos) {
@@ -615,26 +606,23 @@ function updateGameLogic() {
         }
     });
 
-    // 4. Host Logic (Ghost Movement & Collision)
+    // 4. Host Logic
     if (isHost && ghosts.length > 0) {
         const ghostUpdates = [];
         ghosts.forEach((g, i) => {
             if(!g.visible) return;
             
-            // Suche nächstes Ziel (lebender Spieler)
+            // AI Zielsuche
             let target = null;
             let minDist = 9999;
 
-            // Check mich selbst
             if (!amIDead) {
                 const d = g.position.distanceTo(player.position);
                 if (d < minDist) { minDist = d; target = player.position; }
             }
-
-            // Check andere
             for(let id in remotePlayers) {
                 const rp = remotePlayers[id];
-                if (rp.mesh.visible) { // Nur wenn nicht tot
+                if (rp.mesh.visible) {
                     const d = g.position.distanceTo(rp.mesh.position);
                     if (d < minDist) { minDist = d; target = rp.mesh.position; }
                 }
@@ -651,17 +639,17 @@ function updateGameLogic() {
 
             ghostUpdates.push({ x: g.position.x, z: g.position.z, index: i });
             
-            // Check Collision with ME (Host)
+            // Kollision prüfen
             if (!amIDead && g.position.distanceTo(player.position) < 1.5) {
                  const msg = document.getElementById('status-message');
-                 if(msg.style.display === 'block') { // Power Mode
+                 if(msg.style.display === 'block') { 
                      socket.emit('ghostEliminated', { room: myRoomId, ghostId: i });
                  } else {
                      socket.emit('playerKilled', { room: myRoomId, playerId: socket.id });
                  }
             }
             
-            // Check Collision with others
+            // Kollision für andere prüfen
             for(let id in remotePlayers) {
                 const rp = remotePlayers[id];
                 if (rp.mesh.visible && g.position.distanceTo(rp.mesh.position) < 1.5) {
@@ -677,7 +665,6 @@ function updateGameLogic() {
         socket.emit('ghostsUpdate', { room: myRoomId, ghostsData: ghostUpdates });
     }
     
-    // Level End check
     if(isHost) {
         let itemsLeft = pellets.some(p => p.visible) || crucifixes.some(c => c.visible);
         let ghostsLeft = ghosts.some(g => g.visible);
@@ -695,10 +682,15 @@ function updateGameLogic() {
 }
 
 function updateCamera() {
-    camera.position.x += (player.position.x - camera.position.x) * 0.1;
-    camera.position.z += (player.position.z + 11 - camera.position.z) * 0.1;
-    camera.lookAt(player.position);
+    const targetX = player.position.x;
+    const targetZ = player.position.z + CONFIG.cameraDistance; // Z + 11
+    
+    camera.position.x += (targetX - camera.position.x) * 0.1;
+    camera.position.z += (targetZ - camera.position.z) * 0.1;
+    camera.position.y = CONFIG.cameraHeight; // Y = 14
+    camera.lookAt(player.position.x, player.position.y, player.position.z); // Center on player
 
+    // Wand Transparenz
     transparentWalls.forEach(w => { w.material.opacity = 1.0; w.material.transparent = true; });
     transparentWalls = [];
     const dir = new THREE.Vector3().subVectors(player.position, camera.position).normalize();
